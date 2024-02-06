@@ -1,160 +1,199 @@
 #include "rtc.h"
-#include "i8259.h"
 #include "lib.h"
+#include "i8259.h"
+#include "keyboard.h"
 
-#define RTC_INDEX       0x70
-#define RTC_CMOS        0x71
-#define RTC_REGISTER_A  0x0A
-#define RTC_REGISTER_C  0x0C
-#define RTC_REGISTER_B  0x0B
-#define RTC_IRQ_NUM     8
-#define MAX_RATE        15
-#define RATE_MASK       0x0F
-#define PREV_MASK       0XF0
-#define BIT_SIX         0X40
-#define MIN_RATE        3
-#define MAX_FREQ        1024
-#define MIN_FREQ        2
+#define NUM_COLS 80
 
-volatile uint32_t rtc_counter = MAX_FREQ / MIN_FREQ;
-volatile uint32_t rtc_int = 0;
-uint32_t rtc_max_count = MAX_FREQ / MIN_FREQ;
+/* Local rtc variables */
+volatile uint32_t rtc_tick;
+volatile int32_t rtc_status;
 
-extern void rtc_handler(void);
-void rtc_change_rate(int32_t frequency);
-char log2(int32_t);
-
-/* void rtc_init(void);
- * Inputs: void
- * Return Value: none
- * Function: initializes rtc */
-void rtc_init(void) {
-    // Initialization code follows steps from https://wiki.osdev.org/RTC
-    unsigned char prev;                 // select register B, (disable NMI is unnecessary for interrupts are not enabled)
-
-    outb(RTC_REGISTER_B, RTC_INDEX);    // select register B, (disable NMI is unnecessary for interrupts are not enabled)
-    prev = inb(RTC_CMOS);               // read the current value of register B
-
-    outb(RTC_REGISTER_B,RTC_INDEX);     // set the index again (a read will reset the index to register D)
-    outb(prev | BIT_SIX, RTC_CMOS);     //write the previous value ORed with 0x40. This turns on bit 6 of register B
-
-    rtc_max_count = MAX_FREQ / MIN_FREQ;
-    enable_irq(RTC_IRQ_NUM);       
-    rtc_change_rate(MAX_FREQ);          // Default to maximum rate     
-}
-
-/* void rtc_handler(void);
- * Inputs: void
- * Return Value: none
- * Function: read from register C to handle interrupts  */
-void rtc_handler(void) {
-    unsigned char temp;
-    outb(RTC_REGISTER_C,RTC_INDEX);     // select register C
-    temp = inb(RTC_CMOS);               // just throw away contents
-    (void) temp;
-
-    rtc_counter--;
-    if(rtc_counter == 0) {
-        rtc_int = 1;
-        rtc_counter = rtc_max_count;
-    }
-
-    send_eoi(RTC_IRQ_NUM);
-}
-//upon a IRQ 8,
-//Status Register C will contain a bitmask telling which interrupt happened
-
-/* rtc_write
- * Inputs:  fd      - File descriptor number
- *          buf     - Input data pointer
- *          nbytes  - Number of bytes (should be 4)
- * Return Value: 0 on success, -1 on failure
- * Function: Write RTC interrupt rate  */
-int32_t rtc_write(int32_t fd, const void* buf, int32_t nbytes) {
-    int32_t freq;
-
-    if(buf == NULL) {
-        return -1;
-    }
-    if(nbytes != sizeof(int32_t)) {
-        return -1;
-    }
-
-    freq = *((int *) buf);
-
-    // Bound the input
-    if(freq > MAX_FREQ || freq < MIN_FREQ) {
-        return -1;
-    }
-
-    // Check for powers of two (not neccesary for virtualized RTC, but may be tested for CP2)
-    if((freq & (freq - 1)) != 0) {
-        return -1;
-    }
-
+/* 
+ *  rtc_initialize
+ *   DESCRIPTION: Initialize the RTC
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: Initializes RTC by sending data to ports
+ */
+void rtc_initialize(void)
+{
+    /* Critical section */
     cli();
-    rtc_max_count = MAX_FREQ / freq;
+
+    /* Disable NMI */
+    outb(DISABLE_NMI_A, RTC_PORT);
+    outb(DISABLE_NMI_B, RTC_PORT);
+
+    /* Turn on IRQ 8 */
+    char prev = inb(CMOS_PORT);
+    outb(DISABLE_NMI_B, RTC_PORT);
+    outb(prev | PREV_MASK, CMOS_PORT);
+    enable_irq(RTC_IRQ);
+
+    /* Set local vars */
+    rtc_tick = 0;
+    rtc_status = 0;
+
     sti();
-    return 0;
 }
 
-/* rtc_open
- * Inputs:  filename    - String filename
- * Return Value: positive FD number, -1 on failure
- * Function: Open and initialize RTC device  */
-int32_t rtc_open(const uint8_t* filename) {
-    rtc_max_count = MAX_FREQ / MIN_FREQ;
-    return 0;
+/* 
+ *  rtc_interrupt_handler
+ *   DESCRIPTION: Interrupt handler for rtc
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: RTC functions on computer
+ */
+void rtc_interrupt_handler(void)
+{
+    /* Set local vars */
+    rtc_tick++;
+    rtc_status = 1;
+
+    /* Call test_interrupt to test RTC */
+    //test_interrupts();
+
+    // cli();
+    // putc('1');
+    // update_cursor();
+    // if(rtc_tick >= NUM_COLS)
+    // {
+    //     enter();
+    //     vert_scroll();
+    //     rtc_tick = 0;
+    // }
+    // sti();
+
+    /* Write/read ports */
+    outb(STAT_REG_C, RTC_PORT);
+    inb(CMOS_PORT);
+
+    /* Send EOI */
+    send_eoi(RTC_IRQ);
 }
 
-/* rtc_close
- * Inputs:  fd  - File descriptor number
- * Return Value: 0 on success, -1 on failure
- * Function: Close RTC device  */
-int32_t rtc_close(int32_t fd) {
-    return 0;
-}
+/* 
+ *  set_frequency
+ *   DESCRIPTION: Set frequency for RTC
+ *   INPUTS: freq - integer that should be a power of two which will be used to set frequency
+ *   OUTPUTS: none
+ *   RETURN VALUE: 0 if successful, otherwise -1
+ *   SIDE EFFECTS: RTC frequency will change
+ */
+int set_frequency(int freq)
+{
+    int i;     // Loop to check frequency
+    int temp;  //
+    int count; //
+    temp = -1; // flag to check for valid frequency
+    count = MAX_FREQ_COUNT; // rate for 1024 hz
+    rtc_tick = 0; //reset the counter
 
-/* rtc_read
- * Inputs:  fd      - File descriptor number
- *          buf     - Output data pointer
- *          nbytes  - Number of bytes read
- * Return Value: 0 on success, -1 on failure
- * Function: Bock until an RTC int is received  */
-int32_t rtc_read(int32_t fd, void* buf, int32_t nbytes) {
-    rtc_int = 0;
-    while(rtc_int == 0);
-    return 0;
-}
-
-/* void log2(int32_t num);
- * Inputs: num -- frequency that wants to be changed to
- * Return Value: count -- log2(num)
- * Function: perform log2 operation to input  */
-char log2(int32_t num) {
-    char count = 0;
-    while(num != 1){         // count number of bits in the number by dividing it by 2
-        num /= 2;
+    // loop to check if frequency is valid and to find the rate
+    for (i = MAX_FREQ; i >= 2; i /= 2)
+    {
+        if (freq == i)
+        {
+            temp = count;
+            break;
+        }
         count++;
     }
-    return count;
-}
 
-/* void rtc_change_rate(int32_t frequency);
- * Inputs: frequency -- frequency that wants to be changed to
- * Return Value: none
- * Function: calculate rate according to input frequency and change the frequency of rtc */
-void rtc_change_rate(int32_t frequency) {
-    char rate = MAX_RATE - log2(frequency) + 1;       // frequency =  32768 >> (rate-1);
+    // return -1 if frequency invalid
+    if (temp == -1)
+    {
+        return -1;
+    }
+
+    // obtain rate;
+    uint8_t rate = (uint8_t)temp;
     rate &= RATE_MASK;
 
-    if (rate < MIN_RATE){                             // fastest rate selection is 3
-        return;                                       // thus if rate is less than 3, return
-    }
+    //begin critical section
     cli();
-    outb(RTC_REGISTER_A, RTC_INDEX);                  // set index to register A, (disable NMI is unnecessary for interrupts are not enabled)
-    char prev = inb(RTC_CMOS);                        // get initial value of register A
-    outb(RTC_REGISTER_A, RTC_INDEX);                  // reset index to A
-    outb((prev & PREV_MASK) | rate, RTC_CMOS);        // write only our rate to A. Note, rate is the bottom 4 bits.
+
+    // disable nmi and set frequency
+    outb(DISABLE_NMI_A, RTC_PORT);
+    char prev = inb(CMOS_PORT);
+    outb(DISABLE_NMI_A, RTC_PORT);
+    outb((prev & FREQ_MASK) | rate, CMOS_PORT);
+
+    //end critical section
     sti();
+
+    return 0;
+}
+
+/* 
+ *  rtc_open
+ *   DESCRIPTION: Open functionality for RTC
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: return value of set_frequency
+ *   SIDE EFFECTS: Sets rtc frequency to 2 and the tick to 0
+ */
+int rtc_open(const uint8_t* filename)
+{
+    rtc_tick = 0;
+    rtc_status = 0;
+
+    // set freqency to 2 and returns
+    return set_frequency(MIN_FREQ);
+}
+
+/* 
+ *  rtc_read
+ *   DESCRIPTION: Read functionality for RTC
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: 0
+ *   SIDE EFFECTS: Checks the rtc status. If there was an interrupt, set the status back to 0, otherwise spin
+ */
+int rtc_read(uint32_t inode, uint32_t offset, uint8_t* buf, uint32_t length)
+{
+    //check for rtc interrupt and set status when interupt complete
+    while (!rtc_status)
+    {
+    }
+    rtc_status = 0;
+
+    return 0;
+}
+
+/* 
+ *  rtc_write
+ *   DESCRIPTION: Writes to RTC
+ *   INPUTS: buffer - What to write to RTC
+ *           bytes - How many bytes to write
+ *   OUTPUTS: none
+ *   RETURN VALUE: return value of set_frequency
+ *   SIDE EFFECTS: Will write to RTC based on buffer and bytes
+ */
+int rtc_write(int32_t fd, const void *buffer, int32_t nbytes)
+{
+    // check if bytes are not 4 and buffer is null; return -1 if true
+    if (nbytes != RTC_BUFF_SIZE || buffer == NULL)
+    {
+        return -1;
+    }
+
+    // set frequency based on buffer and return
+    return set_frequency(*(int *)buffer);
+}
+
+/* 
+ *  rtc_close
+ *   DESCRIPTION: Close functionality for RTC
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: 0
+ *   SIDE EFFECTS: Returns 0
+ */
+int rtc_close(int32_t fd)
+{
+    return 0;
 }

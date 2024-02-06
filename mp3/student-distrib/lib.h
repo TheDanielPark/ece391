@@ -7,14 +7,40 @@
 
 #include "types.h"
 
+// Magic Numbers
+#define nullValue '\0'
+#define space   ' '
+#define highSignal 1
+#define lowSignal 0
+#define VIDEO       0xB8000
+#define NUM_COLS    80
+#define NUM_ROWS    25
+#define ATTRIB      0x7
+
+char* video_mem;
+volatile int enterFlag;
+
+// Methods
 int32_t printf(int8_t *format, ...);
 void putc(uint8_t c);
+void putc_user(uint8_t c);
 int32_t puts(int8_t *s);
 int8_t *itoa(uint32_t value, int8_t* buf, int32_t radix);
 int8_t *strrev(int8_t* s);
 uint32_t strlen(const int8_t* s);
 void clear(void);
-void update_cursor(void);
+void backspace(void);
+void reset(void);
+void enter(void);
+void enter_user(void);
+void vert_scroll(void);
+void vert_scroll_user(void);
+void newline_check(void);
+void newline_check_user(void);
+int get_screen_x();
+int get_screen_y();
+void set_screen_x(uint8_t x);
+void set_screen_y(uint8_t y);
 
 void* memset(void* s, int32_t c, uint32_t n);
 void* memset_word(void* s, int32_t c, uint32_t n);
@@ -24,11 +50,13 @@ void* memmove(void* dest, const void* src, uint32_t n);
 int32_t strncmp(const int8_t* s1, const int8_t* s2, uint32_t n);
 int8_t* strcpy(int8_t* dest, const int8_t*src);
 int8_t* strncpy(int8_t* dest, const int8_t*src, uint32_t n);
+void enable_cursor(uint8_t cursor_start, uint8_t cursor_end);
+void update_cursor(void);
 
 /* Userspace address-check functions */
-void test_interrupts(void);
 int32_t bad_userspace_addr(const void* addr, int32_t len);
 int32_t safe_strncpy(int8_t* dest, const int8_t* src, int32_t n);
+void test_interrupts(void);
 
 /* Port read functions */
 /* Inb reads a byte and returns its value as a zero-extended 32-bit

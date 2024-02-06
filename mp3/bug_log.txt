@@ -1,0 +1,154 @@
+Algorithmic Error
+Error: Key press wasn’t being given correct value
+Solution: Used incorrect scan code
+Difficulty: 30 minutes
+Difficulty to Fix: 10-20 lines
+
+Algorithmic Error
+Error: Keyboard interrupts caused crashes
+Solution: We were sending incorrect value to enable_irq
+Difficulty: 30 minutes
+Difficulty to Fix: 1 line
+
+Ambiguity Error
+Error: Program terminates when it should spin
+Solution: Needed default handlers for handlers that weren’t filled yet. IDT wasn’t fully filled
+Difficulty: 3 hours
+Difficulty to Fix: 10 lines
+
+Algorithmic Error
+Error: EOI wasn’t being called in keyboard handler
+Solution: Keyboard handler wasn’t calling EOI signal
+Difficulty: 1 hour
+Difficulty to Fix: 1 line
+
+Ambiguity Error
+Error: RTC doesn’t flicker
+Solution: PIC code had many errors, including not enabling the slave, having incorrect ports/data with outb functions, and not setting EOI correctly between master and slave
+Difficulty: 3 hours
+Difficulty to Fix: 20-30 lines
+
+Algorithmic Error
+Error: Keyboard inputs don’t display correctly
+Solution: PIC code had many errors, including not enabling the slave, having incorrect ports/data with outb functions, and not setting EOI correctly between master and slave
+Difficulty: 3 hours
+Difficulty to Fix: 20-30 lines
+
+Algorithmic Error
+Error: RTC flickers but then general protection occurs
+Solution: Had extra cli/sti in our interrupt handlers
+Difficulty: 3 hours
+Difficulty to Fix: 2 lines
+
+Algorithmic Error
+Error: Using printf caused page fault
+Solution: CLI/STI the printf
+Difficulty: 15 minutes
+Difficulty to Fix: 2 lines
+
+Algorithmic Error
+Error: Inputs such as shift, caps lock, and backspace always create a new line
+Solution: Our case statements needed breaks because it would go through all the cases
+Difficulty: 1 hour
+Difficulty to Fix: 5-10 lines
+
+Algorithmic Error
+Error: Backspace moves cursor back one but doesn’t delete on screen but if pressed twice it moves cursor back again but deletes the character that was originally supposed to be deleted
+Solution: We were setting the current character to null instead of the previous character so thats why we backspaced twice and the character would disappear 
+Difficulty: 1.5 hours
+Difficulty to Fix: 1 line
+
+Algorithmic Error
+Error: Page fault when backspacing if characters exceed one line
+Solution: We were resetting to the left-most x position instead of right-most
+Difficulty: 0.5 hours
+Difficulty to Fix: 1 line
+
+Algorithmic Error
+Error: Page fault when backspacing if there was ever a new line character
+Solution: Our x index was off by one when backspacing and we were not resetting our buffer by calling terminal_read
+Difficulty: 1 hour
+Difficulty to Fix: 2-3 lines
+
+Algorithmic Error
+Error: Noticed that dentry.filename wasn’t printing anything
+Solution: Switched params in the str_copy call in read
+Solution: 3-4 hours
+Difficulty to Fix: 2-3 lines
+
+Algorithmic Error
+Error: Vertical scrolling doesn’t work with character overflow but works with enter
+Solution: We needed to modify putc so that screen_y doesn’t increment past 24
+Difficulty: 1.5 hours
+Difficulty to Fix: 5-10 lines
+Algorithmic Error
+Error: Page fault error because of incorrect page_dir access
+Solution: We were using the wrong address values
+Difficulty: 1 hour
+Difficulty to Fix: 5-10 lines
+
+Algorithmic Error
+Error: Infinite loop when doing read_data
+Solution: Need to break out of loop if no more bytes to read
+Difficulty: 15 minutes
+Difficulty to Fix: 1 line
+
+Algorithmic Error
+Error: Cannot find bounds of current function in asm volatile in execute. Page fault at IRET: assembly linkage was wrong
+Solution: Read and write handler were being passed null arguments
+Difficulty: 6 hours
+Difficulty to Fix: 10 lines
+
+Algorithmic Error
+Error: Read and write handlers keep repeating over and over
+Solution: Needed to keep track of enter key in our keyboard functionality so that it only reads when pressed
+Difficulty: 3 hours
+Difficulty to Fix: 20 lines
+
+Algorithmic Error
+Error: Only first three letters being passed to execute handler
+Solution: Our sys link was implemented incorrectly, reformatted and fixed it
+Difficulty: 6 hours
+Difficulty to Fix: 50 lines
+
+Algorithmic Error
+Error: If we typed and reached the end of the line the current line would get overwritten instead of going to the next line
+Solution: Because of the ece391os> auto print, we needed to reformat the dimensions for writing on the next line
+Difficulty: 30 min
+Difficulty to Fix: 2 lines
+
+Algorithmic Error
+Error: Our terminal_read was incorrectly reading a new line character if we reached max buffer size which would mean that it was reading it as a command
+Solution:  Because of the ece391os> we needed to reconsider our buffer as well and what would be sent to terminal_read
+Difficulty: 1 hour
+Difficulty to Fix: 10 lines
+
+Algorithmic Error
+Error: Keyboard wasn’t vert scrolling correctly after calling shell
+Solution: We put vert scroll in our enter functionality but realized that if a command prints lines then it needs to vert scroll regardless of if we press enter or not
+Difficulty: 1 hour
+Difficulty to Fix: 20 lines
+
+Algorithmic Error
+Error: Pingpong wasn’t working because we had cli/sti in our interrupts which wasn’t enabling our rtc status
+Solution: Remove cli/sti
+Difficulty: 20 min
+Difficulty to Fix: 2 lines
+
+Algorithmic Error
+Error: Page faults on ‘ls’ and ‘testprint’ because halt still has bugs, fixed by fixing the base table entry formula
+Solution: Paging was incorrect, used wrong memory sizes
+Difficulty: 6 hours
+Difficulty to Fix: 1-2 lines
+
+Ambiguity Error
+Error: Issue with halt where halt status would change randomly and because of that programs would exit normally 
+Solution: Fixed by adding cli/sti
+Difficulty: 2 hours
+Difficulty to Fix: 2 lines
+
+Algorithmic Error
+Error: Get args isn’t working properly even though the write arguments are being passed in the buffer
+Solution: Our read data was wrong because we were passing fd into file_read instead of the inode
+Difficulty: 3 hours
+Difficulty to Fix: 1 line

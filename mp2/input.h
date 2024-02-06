@@ -1,9 +1,8 @@
-/*
- * tab:4
+/*									tab:8
  *
  * input.h - header file for input control to maze game
  *
- * "Copyright (c) 2004-2009 by Steven S. Lumetta."
+ * "Copyright (c) 2004-2011 by Steven S. Lumetta."
  *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation for any purpose, without fee, and without written agreement is
@@ -23,15 +22,17 @@
  * THE UNIVERSITY OF ILLINOIS HAS ANY OBLIGATION TO PROVIDE MAINTENANCE, 
  * SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS."
  *
- * Author:        Steve Lumetta
- * Version:        2
+ * Author:	    Steve Lumetta
+ * Version:	    3
  * Creation Date:   Thu Sep  9 22:22:00 2004
- * Filename:        input.h
+ * Filename:	    input.h
  * History:
- *    SL    1    Thu Sep  9 22:22:00 2004
- *        First written.
- *    SL    2    Sun Sep 13 04:11:44 2009
- *        Changed display interface for Tux controller.
+ *	SL	1	Thu Sep  9 22:22:00 2004
+ *		First written.
+ *	SL	2	Sun Sep 13 04:11:44 2009
+ *		Changed display interface for Tux controller.
+ *	SL	3	Wed Sep 14 02:06:59 2011
+ *		Updated command names and numbers for adventure game.
  */
 
 #ifndef INPUT_H
@@ -39,23 +40,34 @@
 
 /* possible commands from input device, whether keyboard or game controller */
 typedef enum {
-    TURN_NONE, TURN_RIGHT, TURN_BACK, TURN_LEFT, 
-    NUM_TURNS, CMD_QUIT = NUM_TURNS
+    CMD_NONE, CMD_RIGHT, CMD_LEFT, CMD_UP, CMD_DOWN,
+    CMD_MOVE_LEFT, CMD_ENTER, CMD_MOVE_RIGHT,
+    CMD_TYPED,
+    CMD_QUIT,
+    NUM_COMMANDS
 } cmd_t;
 
+#define MAX_TYPED_LEN 20
+
 /* Initialize the input device. */
-extern int init_input();
+extern int init_input ();
 
 /* Read a command from the input device. */
-extern cmd_t get_command();
+extern cmd_t get_command ();
+
+/* Get currently typed command string. */
+extern const char* get_typed_command ();
+
+/* Reset typed command. */
+extern void reset_typed_command ();
 
 /* Shut down the input device. */
-extern void shutdown_input();
+extern void shutdown_input ();
 
 /*
  * Show the elapsed seconds on the Tux controller (no effect when
  * compiled for a keyboard).
  */
-extern void display_time_on_tux(int num_seconds);
+extern void display_time_on_tux (int num_seconds);
 
 #endif /* INPUT_H */

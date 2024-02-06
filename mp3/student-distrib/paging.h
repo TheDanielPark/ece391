@@ -1,61 +1,93 @@
-#ifndef PAGING_H
-#define PAGING_H
+/*
+ * Paging.h
+ * This is the header file for initializing pages.
+ * This file mainly sets the structs.
+ */
 
-#ifndef ASM
+#include "lib.h"
 
-#include "types.h"
+#define PAGING_SIZE 1024
+#define four_kb     4096
+#define SHIFT1      12
+#define SHIFT2      22
+#define KERNEL_MEM 0x400000                // kernel memory address
+#define VIDEO_MEM 0xB8000                  // virstual video memory address
+#define VIRUTAL_MEM (VIDEO_MEM & 0x3FF000) // video memory address for array
 
-#define   MAX_SPACES    1024      //Number of tables/pages in dir
-#define   ALIGN_4KB		4096			 //(2^12)
-#define   VIDMEM_ADDR   0xB8000    //Video memory address in physical memory
-#define   KERNEL_ADDR   0x400000    //Kernel address in physical memory
+/* Adding structs*/
 
-#define   PAGE_4MB      0x400000  //4 MB page size
-#define   USER_MEM      0x8000000 //Page address for user stack
-#define   USER_INDEX    32        //The directory index for this address.
-#define   VIDEO_INDEX   34        //directory used for vidmap  
+/* This is the struct for the page directory entry table */
+typedef struct pde
+{
+    union
+    {
+        uint32_t hex;
+        struct
+        {
+            uint8_t present_pte : 1;
+            uint8_t read_write_pte : 1;
+            uint8_t user_pte : 1;
+            uint8_t pwt_pte : 1;
+            uint8_t pcd_pte : 1;
+            uint8_t a_pte : 1;
+            uint8_t zero_pte : 1;
+            uint8_t ps_pte : 1;
+            uint8_t g_pte : 1;
+            uint8_t avail_pte : 3;
+            uint32_t page_table_base_addr_pte : 20;
+        } __attribute__((packed));
+        struct
+        {
+            uint8_t present_entry : 1;
+            uint8_t read_write_entry : 1;
+            uint8_t user_entry : 1;
+            uint8_t pwt_entry : 1;
+            uint8_t pcd_entry : 1;
+            uint8_t a_entry : 1;
+            uint8_t d_entry : 1;
+            uint8_t ps_entry : 1;
+            uint8_t g_entry : 1;
+            uint8_t avail_entry : 3;
+            uint8_t pat_entry : 1;
+            uint16_t reserved_entry : 9;
+            uint32_t page_table_base_addr_entry : 10;
+        } __attribute__((packed));
+    };
+} pde_t;
 
-#define VM_VIDEO 0x8800000
-//See wiki.osdev.org/Paging for information on directory and table entries.
+/* This is the struct for page table entries */
+typedef struct pte
+{
+    union
+    {
+        uint32_t hex;
+        struct
+        {
+            uint8_t present_pte : 1;
+            uint8_t read_write_pte : 1;
+            uint8_t user_pte : 1;
+            uint8_t pwt_pte : 1;
+            uint8_t pcd_pte : 1;
+            uint8_t a_pte : 1;
+            uint8_t d_pte : 1;
+            uint8_t pat_pte : 1;
+            uint8_t g_pte : 1;
+            uint8_t avail_pte : 3;
+            uint32_t page_table_base_addr_pte : 20;
+        } __attribute__((packed));
+    };
+} pte_t;
 
-//The 32 bit entries used for the directory
-typedef struct __attribute__((packed)) dir_entry_desc{
-    uint32_t present            : 1;
-    uint32_t read_write         : 1;
-    uint32_t user               : 1;
-    uint32_t write_through      : 1;
-    uint32_t cache_disable      : 1;
-    uint32_t accessed           : 1;
-    uint32_t reserved           : 1;
-    uint32_t size               : 1;      //4MB or 4kB
-    uint32_t ignored            : 1;
-    uint8_t  avail_11_9         : 3;
-    uint32_t table_addr_31_12   : 20;
-}dir_entry_desc_t;
+/* defining variables */
+extern pde_t page_dir[PAGING_SIZE] __attribute__((aligned(four_kb)));
+extern pte_t page_table[PAGING_SIZE] __attribute__((aligned(four_kb)));
+extern pde_t page_virtual_mem[PAGING_SIZE] __attribute__((aligned(four_kb)));
 
-//32 bit Entries used for the tables
-typedef struct __attribute__((packed)) table_entry_desc{
-    uint32_t present            : 1;
-    uint32_t read_write         : 1;
-    uint32_t user               : 1;
-    uint32_t write_through      : 1;
-    uint32_t cache_disable      : 1;
-    uint32_t accessed           : 1;
-    uint32_t dirty              : 1;
-    uint32_t reserved           : 1;
-    uint32_t global             : 1;
-    uint8_t  avail_11_9         : 3;
-    uint32_t page_addr_31_12    : 20;
-}table_entry_desc_t;
+/* Initializing paging function */
+extern void paging_initialize();
 
-//Arrays holding the 32-bit entries for directory and table
-dir_entry_desc_t page_directory[MAX_SPACES] __attribute__((aligned (ALIGN_4KB)));
-table_entry_desc_t page_table[MAX_SPACES] __attribute__((aligned (ALIGN_4KB)));
-table_entry_desc_t page_table_vidmap[MAX_SPACES] __attribute__((aligned (ALIGN_4KB)));
+/* Load pde function */
+extern inline void load_pde(uint32_t page_dir);
 
-
-// Initializes the pages
-extern void paging_init();
-
-#endif /* ASM */
-#endif /* PAGING_H */
+/* Flush tlb function */
+extern inline void flush_tlb();

@@ -1,18 +1,29 @@
-#ifndef TERMINAL_H
-#define TERMINAL_H
+/*
+ *  terminal.h
+ *  Handles the reading in terminal and writing to terminal.
+*/
 
+#include "keyboard.h"
 
-#include "types.h"
+#ifndef _TERMINAL_H
+#define _TERMINAL_H
 
-#define BUFFER_SIZE   128
+/* Magic Numbers */
+#define maxInputLength 127
 
-//Terminal system call functions. (see terminal.c for descriptions)
-extern int32_t terminal_read(int32_t fd, void* buf, int32_t nbytes);
-extern int32_t terminal_write(int32_t fd, const void* buf, int32_t nbytes);
-extern int32_t terminal_open(const uint8_t* filename);
-extern int32_t terminal_close(int32_t fd);
+/* Reads the input in terminal */
+int32_t terminal_read(uint32_t fd, uint32_t offset, uint8_t* buf, uint32_t nbytes);
 
-//Connect keybaord to terminal functions. (see terminal.c for descriptions)
-extern void get_char(char new_char);
+/* Writes to the terminal, given a buffer */
+int32_t terminal_write(int32_t fd, const void* buf, int32_t nbytes);
 
-#endif /* TERMINAL_H */
+/* Opens the file (does nothing since we have a read-only system) */
+int32_t terminal_open(const uint8_t* filename);
+
+/* Closes the file (does nothing since we have a read-only system) */
+int32_t terminal_close(int32_t fd);
+
+/* Variable for the terminal buffer */
+extern char terminalBuffer[maxInputLength];
+
+#endif /* _KEYBOARD_H */

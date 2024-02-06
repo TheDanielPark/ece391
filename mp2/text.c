@@ -1,5 +1,4 @@
-/*
- * tab:4
+/*									tab:8
  *
  * text.c - font data and text to graphics conversion utility
  *
@@ -9,36 +8,38 @@
  * documentation for any purpose, without fee, and without written agreement is
  * hereby granted, provided that the above copyright notice and the following
  * two paragraphs appear in all copies of this software.
- *
- * IN NO EVENT SHALL THE AUTHOR OR THE UNIVERSITY OF ILLINOIS BE LIABLE TO
- * ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
- * DAMAGES ARISING OUT  OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION,
- * EVEN IF THE AUTHOR AND/OR THE UNIVERSITY OF ILLINOIS HAS BEEN ADVISED
+ * 
+ * IN NO EVENT SHALL THE AUTHOR OR THE UNIVERSITY OF ILLINOIS BE LIABLE TO 
+ * ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL 
+ * DAMAGES ARISING OUT  OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, 
+ * EVEN IF THE AUTHOR AND/OR THE UNIVERSITY OF ILLINOIS HAS BEEN ADVISED 
  * OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * THE AUTHOR AND THE UNIVERSITY OF ILLINOIS SPECIFICALLY DISCLAIM ANY
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE
+ * 
+ * THE AUTHOR AND THE UNIVERSITY OF ILLINOIS SPECIFICALLY DISCLAIM ANY 
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE 
  * PROVIDED HEREUNDER IS ON AN "AS IS" BASIS, AND NEITHER THE AUTHOR NOR
- * THE UNIVERSITY OF ILLINOIS HAS ANY OBLIGATION TO PROVIDE MAINTENANCE,
+ * THE UNIVERSITY OF ILLINOIS HAS ANY OBLIGATION TO PROVIDE MAINTENANCE, 
  * SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS."
  *
- * Author:        Steve Lumetta
- * Version:        2
+ * Author:	    Steve Lumetta
+ * Version:	    2
  * Creation Date:   Thu Sep  9 22:06:29 2004
- * Filename:        text.c
+ * Filename:	    text.c
  * History:
- *    SL    1    Thu Sep  9 22:06:29 2004
- *        First written.
- *    SL    2    Sat Sep 12 13:45:33 2009
- *        Integrated original release back into main code base.
+ *	SL	1	Thu Sep  9 22:06:29 2004
+ *		First written.
+ *	SL	2	Sat Sep 12 13:45:33 2009
+ *		Integrated original release back into main code base.
  */
 
 #include <string.h>
 
+#include "modex.h"
 #include "text.h"
 
-/*
+
+/* 
  * These font data were read out of video memory during text mode and
  * saved here.  They could be read in the same manner at the start of a
  * game, but keeping a copy allows us to run the game to fix text mode
@@ -561,104 +562,63 @@ unsigned char font_data[256][16] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 };
-
-
-/*
- * string_to_buf
- *   DESCRIPTION: convert input string data into buffer holding ASCII data of the input string
- *   INPUTS: string -- string data to be converted in to ASCII buffer
- *           image_buffer -- buffer that will be holding ASCII character data of the string
- *           background color -- color value that differs depends on the level of the game
- *   OUTPUTS: none
- *   RETURN VALUE: none
- *   SIDE EFFECTS: buffer now holds the ASCII character data of the string
- *
+/* //Convert text to graphic
+*   purpose: Take a string and produce a buffer that has the string in image form
+*   input: string, buffer array, and position number
+*   output: none
+*
+*   position 0: Writing to screen
+*   position 1: Set background to default
+*   position 2: Center message
+*   position 3: put room name into the bar to the left
+*
+*   return: none
  */
-void string_to_buf(const char* string, unsigned char* image_buffer, int background_color){
-  int i,j,k;                                      /* index for loop */
-  unsigned char text_color = BLACK;                /* font color hex value*/
-  unsigned char* current_character;               /* holder for each string data*/
-  int str_len = strlen(string);                   /* length of input string*/
-  int idx = 0;                                    /* index for inputting appropriate color data into buffer*/
-  int center_offset = (STATUS_X_DIM - str_len*FONT_WIDTH)/2;        /* center offset calculation*/
-  int mask = 0x80;                                /* masking value */
+void text_to_graphics(const char* string, unsigned char* buffer, int position) {
+    int i, j, k;        //index of char in string, row in char, bit in row
+    int temp;           //index to fill the background first
+    int p_off;          //plane offset
+    int bitmask;        //bit mask to check for the correct pixel only
+    int location;       //location of pixel in status bar
+    int charStart;      //location of where the char started in the buffer
 
-  /* fill the buffer with background color*/
-  for(i = 0; i < STATUS_X_DIM*STATUS_Y_DIM ;i++){
-    image_buffer[i] = background_color;
-  }
-
-  /*compare bit value of each string and store them into the image_buffer*/
-  for(i = 0; i < str_len; i++){
-    int font_index = (int)string[i];
-    current_character = font_data[font_index];
-    for(j = 0; j < FONT_HEIGHT ; j++){
-      mask = 0x80;
-      for(k = 0; k < FONT_WIDTH ; k++){
-
-        /* calculate index using offset, size of status barm and size of font */
-        idx = STATUS_X_DIM + center_offset + j * STATUS_X_DIM + k + i * FONT_WIDTH;
-        if(current_character[j] & mask) {
-          image_buffer[idx] = text_color;
-        }
-        mask = mask >> 1;
-
-      }
+    // Buffer size * 4 for each plane, set the background color completely first
+    for (temp = 0; temp < (STATUS_BAR_SIZE*4); temp++) { 
+        buffer[temp] = 0x0F; // Color for bar background
     }
-  }
-}
-
-/*
- * string_to_buf_fruit
- *   DESCRIPTION: convert input string data into buffer holding ASCII data of the input string and wrtie that buffer on to input buffer
- *   INPUTS: string -- string data to be converted in to ASCII buffer and written onto input buffer
- *           fruit_buffer -- buffer that will be holding ASCII character data of the string on top of background
- *   OUTPUTS: none
- *   RETURN VALUE: none
- *   SIDE EFFECTS: buffer now holds the ASCII character data of the string
- *
- */
-void string_to_buf_fruit(const char* string, unsigned char* fruit_buffer){
-  int i,j,k;                                      /* index for loop */
-  unsigned char tmp_mask[TXT_X_DIM*TXT_Y_DIM];    /* buffer with masking data */
-  unsigned char* current_character;               /* holder for each string data*/
-  int str_len = strlen(string);                   /* length of input string*/
-  int idx = 0;                                    /* index for inputting appropriate color data into buffer*/
-  int center_offset = (TXT_X_DIM - str_len*FONT_WIDTH)/2;        /* center offset calculation*/
-  int mask = 0x80;                                /* masking value */
-
-
-
-  /* fill the buffer with background color*/
-  for(i = 0; i < TXT_X_DIM*TXT_Y_DIM ;i++){
-    tmp_mask[i] = 0;
-  }
-  /*compare bit value of each string and store them into the image_buffer*/
-  for(i = 0; i < str_len; i++){
-    int font_index = (int)string[i];
-    current_character = font_data[font_index];
-    for(j = 0; j < FONT_HEIGHT ; j++){
-      mask = 0x80;
-      for(k = 0; k < FONT_WIDTH ; k++){
-
-        /* calculate index using offset, size of status barm and size of font */
-        idx = TXT_X_DIM + center_offset + j * TXT_X_DIM + k + i * FONT_WIDTH;
-        /* populate buffer with 1 when string is located for masking purpose*/
-        if(current_character[j] & mask) {
-          tmp_mask[idx] = 1;
-        }
-        mask = mask >> 1;
-
-      }
+    
+    // When writing to screen, start at X_Dim - 8 bits * length of string so it appears right side
+    if (position == 0) {
+        charStart = 320 - (8*strlen(string)); // 320 = image x dim
+    } else if (position == 1) { // if setting background to default just return because it is set
+        return;
+    } else if (position == 2) { // if writing to middle, set start position as the middle of screen
+        charStart = (320 - (8*strlen(string))) / 2; 
+    } else if (position == 3) { // set the start all the way to the left
+        charStart = 0;
     }
-  }
 
-  /* using mask buffer that contains string data, write on input buffer with transparent color */
-  for(i = 0; i < TXT_Y_DIM ;i++){
-    for(j = 0; j < TXT_X_DIM;j++){
-        if(tmp_mask[ j + i * TXT_X_DIM] !=0){
-            fruit_buffer[j + i * TXT_X_DIM] += T_OFFSET;
+    // Loops through the index of characters in string, rows in the character, and the bits in the row to only
+    // change the pixel color if it needs to be written, else keep it the background color and shift the bitmask
+    // to check the next pixel
+    for (i = 0; i < strlen(string); i++) {
+        for (j = 0; j < 16; j++) { // 16 chars in a string
+            // bitmask to set the MSB to 1 and then we will shift it down. must reset this mask each loop
+            bitmask = 0x80;
+            for (k = 0; k < 8; k++) { // 8 rows in char
+                // If the bit in fontdata is not high move to the next bit to check to see which pixel to write
+                if (((font_data[((int)string[i])][j] & bitmask) != 0)) {
+                    // keep it between 0-3
+                    p_off = k % 4;
+                    // Location of the pixel is this equation. 80 = image x width
+                    location = (p_off * (STATUS_BAR_SIZE)) + ((80) * (j + 1)) + (((8*i + charStart) + k) / 4);
+                    // set the pixel to a different color so the text appears. 0x20 is a random color
+                    buffer[location] = 0x20;
+                        
+                }
+                bitmask = bitmask >> 1;
+            }
         }
     }
-  }
+    return;
 }

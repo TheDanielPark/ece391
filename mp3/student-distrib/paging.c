@@ -1,99 +1,92 @@
 #include "paging.h"
+#include "x86_desc.h"
 
-extern void enable(int directory);
+// initialize paging struct
+pde_t page_dir[PAGING_SIZE] __attribute__((aligned(four_kb)));
+pte_t page_table[PAGING_SIZE] __attribute__((aligned(four_kb)));
+pde_t page_virtual_mem[PAGING_SIZE] __attribute__((aligned(four_kb)));
 
+/* 
+ *  paging_initialize
+ *   DESCRIPTION: initializes paging (page directory, page table, video memory, kernel memory)
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */
+void paging_initialize()
+{
+    // intialize variable for looping
+    int i = 0;
 
-void paging_init(){
-  //Loop variables
-  unsigned int j;
-  unsigned int i;
-
-  //Setup the first 4MB of memory with 4 kB tables
-  page_directory[0].present       = 1;
-  page_directory[0].read_write    = 1;
-  page_directory[0].user          = 0;
-  page_directory[0].write_through = 0;  //Not sure
-  page_directory[0].cache_disable = 0;  //Not sure
-  page_directory[0].accessed      = 0;
-  page_directory[0].size          = 0;  //4 kB tables
-  page_directory[0].reserved      = 0;
-  //Aligned value for the table address
-  page_directory[0].table_addr_31_12 = ((int)page_table)/ALIGN_4KB;
-
-  //Sets up the rest as 4MB pages
-  for(i = 1; i < MAX_SPACES; ++i){
-    if(i == 1){
-      //Bit setup for kernel memory.
-      page_directory[i].present     = 1;
-      page_directory[i].user        = 0;
-      page_directory[i].table_addr_31_12 = KERNEL_ADDR/ALIGN_4KB;
+    // initialize page directory and page table
+    for (i = 0; i < PAGING_SIZE; i++)
+    {
+        page_dir[i].hex = 0x0;
+        page_table[i].hex = 0x0;
     }
-    else if(i == USER_INDEX){
-      //Bit setup for User virtual memory
-      page_directory[i].present = 1;
-      page_directory[i].user    = 1;
-      page_directory[i].table_addr_31_12 = USER_MEM/ALIGN_4KB;
-    }
-    else{
-      //Bit setup for the rest of memory
-      page_directory[i].present     = 0;
-      page_directory[i].user        = 0;
-    }
-    page_directory[i].read_write    = 1;
-    page_directory[i].write_through = 0;  //Not sure
-    page_directory[i].cache_disable = 0;  //Not sure
-    page_directory[i].accessed      = 0;
-    page_directory[i].size          = 1;  //4MB memory
-    page_directory[i].reserved      = 0;
-  }
 
+    // initialize page table
+    page_dir[0].page_table_base_addr_pte = ((uint32_t)page_table >> SHIFT1);
+    page_dir[0].read_write_pte = 1;
+    page_dir[0].present_pte = 1;
+    page_dir[0].user_pte = 1;
+    page_dir[0].ps_pte = 0;
 
-  //Fill in the page table for the first 4MB
-  for(j = 0; j < MAX_SPACES; ++j){
-    //Setup video memory page
-    if(j * ALIGN_4KB == VIDMEM_ADDR){
-      page_table[j].present     = 1;
-    }
-    //Set up for unused 4kB pages
-    else{
-      page_table[j].present     = 0;
-    }
-    page_table[j].read_write    = 1;
-    page_table[j].user          = 0;
-    page_table[j].write_through = 0;    //Not sure
-    page_table[j].cache_disable = 0;    //Not sure
-    page_table[j].accessed      = 0;
-    page_table[j].dirty         = 0;
-    page_table[j].reserved      = 0;
-    page_table[j].global        = 0;    //Not sure
-    page_table[j].page_addr_31_12 = j;
-  }
+    // initialize kernel in page 4mb - 8mb
+    page_dir[1].page_table_base_addr_entry = KERNEL_MEM >> SHIFT2;
+    page_dir[1].read_write_entry = 1;
+    page_dir[1].present_entry = 1;
+    page_dir[1].ps_entry = 1;
 
-for(j = 0; j < MAX_SPACES; ++j){
-    //Setup video memory page
-    page_table_vidmap[j].present     = 0;
-    page_table_vidmap[j].read_write    = 1;
-    page_table_vidmap[j].user          = 0;
-    page_table_vidmap[j].write_through = 0;    //Not sure
-    page_table_vidmap[j].cache_disable = 1;    //Not sure
-    page_table_vidmap[j].accessed      = 0;
-    page_table_vidmap[j].dirty         = 0;
-    page_table_vidmap[j].reserved      = 0;
-    page_table_vidmap[j].global        = 0;    //Not sure
-    page_table_vidmap[j].page_addr_31_12 = j;
-  }
+    // initialize virtual memory in page table
+    page_table[VIRUTAL_MEM >> SHIFT1].page_table_base_addr_pte = VIDEO_MEM >> SHIFT1;
+    page_table[VIRUTAL_MEM >> SHIFT1].read_write_pte = 1;
+    page_table[VIRUTAL_MEM >> SHIFT1].present_pte = 1;
+    page_table[VIRUTAL_MEM >> SHIFT1].user_pte = 1;
 
+    load_pde((uint32_t)page_dir);
+}
 
+/* 
+ *  Loads the page address
+ *   DESCRIPTION: Loads the page address
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: Loads the page address
+ */
+inline void load_pde(uint32_t page_dir)
+{
+    //enable paging (code from osdev)
+    asm volatile(
+        "movl %0, %%eax;"
+        "movl %%eax, %%cr3;"
+        "movl %%cr4, %%eax;"
+        "orl $0x010, %%eax;"
+        "movl %%eax, %%cr4;"
+        "movl %%cr0, %%eax;"
+        "orl $0x80000000, %%eax;"
+        "movl %%eax, %%cr0;"
+        :
+        : "r"(page_dir)
+        : "eax");
+}
 
-
-
-
-  //Sets up the control registers for paging
-  enable((int)page_directory);
-
-
-
-
-
-
+/* 
+ *  Flushes tlb
+ *   DESCRIPTION: Flushes tlb
+ *   INPUTS: none
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: Flushes tlb
+ */
+inline void flush_tlb() {
+       asm volatile (
+        "mov %%cr3, %%eax;"
+        "mov %%eax, %%cr3;"
+        :                      /* no outputs */
+        :                      /* no inputs */
+        :"%eax"                /* clobbered register */
+    );
 }

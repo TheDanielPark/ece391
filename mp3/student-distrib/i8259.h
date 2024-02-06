@@ -8,18 +8,20 @@
 
 #include "types.h"
 
+/* Magic numbers */
+#define MASK_ALL        0xFF
+#define MAX_IRQ         15
+#define MAX_IRQ_MASTER  7
+#define SLAVE_DIFF      8
+#define SLAVE_INTR      2
+
 /* Ports that each PIC sits on */
-#define MASTER_8259_CMD_PORT    0x20
-#define SLAVE_8259_CMD_PORT     0xA0
+#define MASTER_8259_PORT    0x20
+#define SLAVE_8259_PORT     0xA0
 
-#define MASTER_8259_DATA_PORT    0x21
-#define SLAVE_8259_DATA_PORT     0xA1
-
-#define SLAVE_IRQ_NUM            2
-#define MASK_INIT                0xFF   
-#define MAX_IRQ_NUM              15
-#define MAX_MASTER_IRQ_NUM       8
-
+/* Data ports for each PIC */
+#define MASTER_8259_PORT_DATA (MASTER_8259_PORT + 1)
+#define SLAVE_8259_PORT_DATA (SLAVE_8259_PORT + 1)
 
 /* Initialization control words to init each PIC.
  * See the Intel manuals for details on the meaning

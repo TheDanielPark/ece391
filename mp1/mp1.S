@@ -1,33 +1,49 @@
-.data					# section declaration
 
-        # Useful offset constants for accessing members of a
-        # struct mp1_blink_struct structure
-        LOCATION   = 0
-        ON_CHAR    = 2
-        OFF_CHAR   = 3
-        ON_LENGTH  = 4
-        OFF_LENGTH = 6
-        COUNTDOWN  = 8
-        STATUS     = 10
-        NEXT       = 12
+# mp1.S - missile-command version
+# Good luck, and have fun!
 
-        STRUCT_SIZE = 16
+.data
+	
+    # Constants for accessing the fields of a struct missile, 
+    # struct missile is defined in rtc.h and mp1.h
 
-# Pointer to head of list (initialized to NULL)
-mp1_list_head:
-        .long   0
+	NEXT 	  = 0
+	X	  = 4
+	Y	  = 8
+	VX	  = 12
+	VY	  = 16
+	DEST_X	  = 20
+	DEST_Y	  = 24
+	EXPLODED  = 28
+	C	  = 32
 
-.text					# section declaration
+    # Character to draw for an explosion - '@'
 
-# Export the function symbol names
-.global mp1_rtc_tasklet
-.global mp1_ioctl
+	EXPLOSION = 64
 
-/* jump table for ioctl */
-jump_table:             
-  .long mp1_ioctl_add, mp1_ioctl_remove, mp1_ioctl_find, mp1_ioctl_sync
+
+# Data shared between this file and rtc.c helper functions
+
+# This '.globl' directive makes these symbols visible externally
+.globl mp1_missile_list, base_alive, mp1_score
+
+mp1_missile_list:	.long 0x0	# Head of list pointer
+base_alive:		.long 0x0	# Array of 3 bytes, plus a padding byte
+mp1_score:		.long 0x0	# Player's current score
+
+
+# Data private to this  file
+
+base_pic:     	    .string "/^^^\\"	# Picture of a live base
+dead_base_pic: 	    .string "xxxxx"	# Picture of a dead base
+crosshairs_x:		.long 0x0	# X-position of the crosshairs
+crosshairs_y:		.long 0x0	# Y-position of the crosshairs
+
+
+.text
 
 # void mp1_poke(void);
+# You can use this function to write to video memory.
 #
 # Interface: Register-based arguments (not C-style)
 #    Inputs: %cl  - The byte you wish to write
@@ -38,470 +54,318 @@ jump_table:
 # Registers: Clobbers EDX
 
 mp1_poke:
-	movl    vmem_base_addr(,1),%edx
-	movb    %cl,(%edx,%eax,1)
-	ret
+		movl    vmem_base_addr(,1),%edx
+		movb    %cl,(%edx,%eax,1)
+		ret
 
-/*-------------------------------------------------------------------------------------------*/
-/* void mp1_rtc_tasklet (unsigned long);
+#   ----------------- Exported functions ---------------------
 
-    Interface: stack-based arguments 
-    Function: Whenever RTC interrupt is generated, 
-              tasklet goes through linked list to update the state of each blink struct. 
-              It makes fish blink between two frames.               
-    Registers: clobbers %ebx, %dx, %eax, %cl
-*/
+# void mp1_rtc_tasklet(unsigned long garbage);
+# Performs three tasks:
+#	(1) updates the list of missiles (implement this in update_missiles,
+#           below, and call it from here).
+#	(2) Redraw the bases - they may have been overwritten with missiles
+#	(3) Redraw the crosshairs - it may have been overwritten with missiles
+# Inputs   : none
+# Outputs  : none
+# Registers: Standard C calling convention
 
+.globl mp1_rtc_tasklet
 mp1_rtc_tasklet:
-  pushl %ebp                  /* create stack frame */
-  movl %esp, %ebp
-  pushl %ebx
-  pushl %esi
-  pushl %edi           
-
-  movl mp1_list_head, %ebx    
-
-tasklet_base_case:              /* if pointer is 0x0, end */
-  cmpl $0, %ebx               
-  je tasklet_end
-  decw COUNTDOWN(%ebx)          /* check countdown to determine whether to examine struct or not */     
-  cmpw $0, COUNTDOWN(%ebx)    
-  je tasklet_examine
-
-tasklet_next:                   /* move to next struct */
-  movl NEXT(%ebx), %ebx
-  jmp tasklet_base_case
-
-tasklet_examine:                /* check on or off status */
-  cmpw $1, STATUS(%ebx)        
-  je off_to_screen
-  
-on_to_screen:                   /* put ON to video memory and call mp_poke */       
-  movzwl LOCATION(%ebx), %eax     
-  shll %eax
-  movb ON_CHAR(%ebx), %cl
-  call mp1_poke
-
-  movw ON_LENGTH(%ebx), %dx       /* set countdown to on_length and invert status */
-  movw %dx, COUNTDOWN(%ebx)
-  xorw $1, STATUS(%ebx)
-  jmp tasklet_next
-
-off_to_screen:                    /* put OFF to video memory and call mp_poke */              
-  movzwl LOCATION(%ebx), %eax
-  shll %eax
-  movb OFF_CHAR(%ebx), %cl
-  call mp1_poke
-
-  movw OFF_LENGTH(%ebx), %dx      /* set countdown to off_length and invert status */
-  movw %dx, COUNTDOWN(%ebx)
-  xorw $1, STATUS(%ebx)
-  jmp tasklet_next
-
-tasklet_end:
-  popl %edi         /*tear down stack frame and return*/
-  popl %esi
-  popl %ebx
-  leave
-  ret
-
-/*-------------------------------------------------------------------------------------------*/
-/* int mp1_ioctl (unsigned long arg, unsigned long cmd)
-       Interface: stack-based arguments 
-        Function: uses the value of cmd to determine which funcntion to jump to. "dispatcher"
-       Registers: clobbers %eax
-           Input: cmd value 
-          Output: -1 if invallid 
-*/
-
-mp1_ioctl:             
-  movl 8(%esp), %eax      
-  cmpl $0, %eax             /* check if cmd is within range */
-  jl ioctl_invalid
-  cmpl $3, %eax
-  jg ioctl_invalid
-  jmp *jump_table(,%eax,4)  /* jump to where cmd points to */
-
-ioctl_invalid:  
-  movl $-1, %eax            /* out of range, return -1 */
-  ret
-
-/*-------------------------------------------------------------------------------------------*/
-/* int mp1_ioctl_add (unsigned long arg)
-          Interface: stack-based arguments 
-          Function: Copy struct from user space into new struct and insert into linked list. 
-         Registers: Clobbers %eax, %ebx, %esi, %dx 
-             Input: pointer to a mp1_blink_struct 
-            Output:  0 - successful 
-                    -1 - fail
-*/
-
-mp1_ioctl_add:
-  pushl %ebp            /* create stack frame */
-  movl %esp, %ebp
-  pushl %ebx
-  pushl %esi
-  pushl %edi
-
-  pushl $STRUCT_SIZE     /* dynamically allocate memory using mp_malloc and check if is suceeded */ 
-  call mp1_malloc
-  add $4, %esp
-  cmpl $0, %eax              
-  je add_malloc_error
-  
-  movl %eax, %esi        /* %esi - address to newly allocated memory*/
-  movl 8(%ebp), %ebx
-  cmpl $0, %ebx          /* check if pointer to structure is valid */   
-  je add_error
-
-  pushl $STRUCT_SIZE     /* call copy_from_user function*/
-  pushl %ebx
-  pushl %esi
-  call mp1_copy_from_user
-  add $12, %esp
-  
-  cmpl $0, %eax            /* if copy didn't suceed, free memory and return -1 */ 
-  je add_check_range
-  jmp add_error
-
-add_check_range:
-  cmpw $80*25, LOCATION(%esi)       /* check if location is within range 0 <  < 80*25 */
-  ja add_error
-  cmpw $0, LOCATION(%esi)
-  jb add_error
-
-  movw ON_LENGTH(%esi), %dx       /* set the countdown field to be on_length field, and set status as 1 */
-  movw %dx, COUNTDOWN(%esi)
-  movw $1, STATUS(%esi)          
-
-  movl mp1_list_head, %eax        /* make this struct new head */      
-  movl %eax, NEXT(%esi)
-  movl %esi, mp1_list_head
-
-  movzwl LOCATION(%esi), %eax     /* set offset and ASCII code and call mp1_poke */
-  shll $1, %eax                     
-  movb ON_CHAR(%esi), %cl
-  call mp1_poke
-
-add_success:
-  movl $0, %eax     /*add is successful, return 0*/
-  jmp add_tear_down     
-
-add_error:          /* something happend, free memory and return*/
-  pushl %esi 
-  call mp1_free
-  add $4, %esp
-
-add_malloc_error: 
-  movl $-1, %eax   
-
-add_tear_down:        
-  popl %edi         /*tear down frame*/
-  popl %esi
-  popl %ebx
-  leave
-  ret
-
-/*-------------------------------------------------------------------------------------------*/
-/*  int mp1_ioctl_remove(unsigned long arg)
-            Interface: stack-based arguments 
-              Function: find a particular struct with given location and remove it from the list
-             Registers: clobbers %eax, %ebx, %esi, %dx
-                 Input: an integer location 
-                Output: 0 - successful
-                       -1 - fail
-*/
-
-mp1_ioctl_remove:
-  pushl %ebp            /*create stack frame*/
-  movl %esp, %ebp
-  pushl %ebx
-  pushl %esi
-  pushl %edi
-
-  movw 8(%ebp), %dx     /*call utility search function to find the struct with given location*/    
-  pushw %dx
-  call search_util
-  addl $2, %esp
-  
-  cmpl $-1, %eax
-  je remove_error
-  movl %eax, %ebx         /* %ebx - node found */
-
-  pushl %ebx              /*call utility search function to find previous node*/
-  call search_prev
-  add $4, %esp
-  cmpl $-1, %eax
-  je remove_error
-  
-  movl NEXT(%ebx), %esi   /* %esi - next node of found node  */
-  cmpl $0, %eax           
-  je its_head
-  movl %esi, NEXT(%eax)     
-  jmp free_memory
-
-its_head:                 /* set the next node as head */
-  movl %esi, mp1_list_head
-
-free_memory:              /* call mp1_free */
-  pushl %ebx
-  call mp1_free
-  add $4, %esp
-
-remove_success:            /*return 0 */
-  movl $0, %eax
-  jmp remove_tear_down
-
-remove_error:               /*return -1 */
-  movl $-1, %eax
-
-remove_tear_down:  
-  popl %edi         /*tear down frame*/
-  popl %esi
-  popl %ebx
-  leave
-  ret
-
-/*  int search prev(unsigned long arg)
-            Interface: stack-based arguments 
-              Function: find the previous node
-             Registers: clobbers %eax, %ebx
-                 Input: pointer to node 
-                Output: pointer to the previous node - successful
-                        0 - indicate that there is no previous node (its head)
-                       -1 - fail due to an error
-*/
-search_prev:
-  pushl %ebp            /*create stack frame*/
-  movl %esp, %ebp
-  pushl %ebx
-  pushl %esi
-  pushl %edi
-
-  movl 8(%ebp), %ebx    /* check if given node is head*/
-  movl mp1_list_head, %eax
-  cmpl %eax, %ebx
-  je search_prev_head
-
-search_prev_base_case:   /*search through list to find the previous node*/ 
-  cmpl NEXT(%eax), %ebx
-  je search_prev_tear_down    
-  movl NEXT(%eax), %eax
-  jmp search_prev_base_case
-
-search_prev_error:
-  movl $-1, %eax          /*return -1 */
-  jmp search_prev_tear_down
-
-search_prev_head:         /*return 0 */
-  movl $0, %eax
-
-search_prev_tear_down:  
-  popl %edi               /*tear down frame*/
-  popl %esi
-  popl %ebx
-  leave
-  ret
-
-/*-------------------------------------------------------------------------------------------*/
-/*  int mp1_ioctl_find(unsigned long arg)
-              Interface: stack-based arguments 
-              Function: find a particular struct with given location and copy it to user level struct
-             Registers: clobbers %eax, %ebx, %esi
-                 Input: an integer location 
-                Output: 0 - successful
-                       -1 - fail
-*/
-
-mp1_ioctl_find:
-  pushl %ebp            /*create stack frame*/
-  movl %esp, %ebp
-  pushl %ebx
-  pushl %esi
-  pushl %edi
-
-  pushl $STRUCT_SIZE     /* dynamically allocate memory using mp_malloc and check if is suceeded */ 
-  call mp1_malloc
-  add $4, %esp
-  cmpl $0, %eax              
-  jne find_malloc_success   
-  movl $-1, %eax
-  jmp find_tear_down
-
-find_malloc_success:
-  movl %eax, %esi        /* %esi - address to newly allocated memory*/
-  movl 8(%ebp), %ebx
-
-  pushl $STRUCT_SIZE     /* call copy_from_user function*/
-  pushl %ebx
-  pushl %esi
-  call mp1_copy_from_user
-  add $12, %esp
-  
-  cmpl $0, %eax            /* if copy didn't suceed, free memory and return -1 */ 
-  je find_check_range
-  jmp find_error
-
-find_check_range:
-  cmpw $80*25, LOCATION(%esi)       /* check if location is within range 0 <  < 80*25 */
-  ja add_error
-  cmpw $0, LOCATION(%esi)
-  jb add_error
-
-  pushw LOCATION(%esi)    /*call search utility function to find the node with given location*/
-  call search_util
-  addl $2, %esp 
-  cmpl $-1, %eax
-  je find_error
-
-  pushl $STRUCT_SIZE    /*call mp1_copy_to_user*/
-  pushl %eax
-  pushl 8(%ebp)
-  call mp1_copy_to_user
-  add $12, %esp
-  
-  cmp $0, %eax      /*check whether copy succeeded*/
-  je find_sucess
-
-find_error:
-  movl $-1, %eax    /*set return -1*/
-  jmp find_free 
-
-find_sucess:        /*set return 0*/  
-  movl $0, %eax
-
-find_free:          /*free allocated memory*/
-  pushl %esi 
-  call mp1_free
-  add $4, %esp
-
-find_tear_down:        
-  popl %edi         /*tear down frame*/
-  popl %esi
-  popl %ebx
-  leave
-  ret
-
-
-/*-------------------------------------------------------------------------------------------*/
-/*  int mp1_ioctl_sync(unsigned long arg)
-              Interface: stack-based arguments 
-              Function: synchronizes two existing location on the screen
-             Registers: clobbers %eax, %ebx, %edi, %esi, %dx, %cl
-                 Input: two 2byte unsigned short integer 
-                Output: 0 - successful
-                       -1 - fail
-*/
-
-mp1_ioctl_sync:
-  pushl %ebp            /*create stack frame*/
-  movl %esp, %ebp
-  pushl %ebx
-  pushl %esi
-  pushl %edi
-
-  movl 8(%ebp), %ebx    /*check if structure is valid*/
-  cmpl $0, %ebx 
-  je sync_error
-
-  andl $0x0000FFFF, %ebx    /*extract lower by anding with 0x0000FFFF and get corresponding struct*/
-  pushl %ebx
-  call search_util
-  add $4, %esp
-  cmpl $-1, %eax
-  je sync_error
-
-  movl %eax, %edi         /* %edi - second*/
-
-  movl 8(%ebp), %ebx      /*extract upper by shifting two bytes and get corresponding struct*/
-  shr $16, %ebx
-  pushl %ebx
-  call search_util
-  add $4, %esp
-  cmpl $-1, %eax
-  je sync_error     
-
-  movl %eax, %esi         /* %esi - first*/
-
-  movw ON_LENGTH(%esi), %dx       /* copy from first to second */
-  movw %dx, ON_LENGTH(%edi)
-  movw OFF_LENGTH(%esi), %dx
-  movw %dx, OFF_LENGTH(%edi)
-  movw COUNTDOWN(%esi), %dx
-  movw %dx, COUNTDOWN(%edi)
-  movw STATUS(%esi), %dx
-  movw %dx, STATUS(%edi)
-    
-  cmpw $1, %dx                /* check status determine whether to display on or off */
-  je sync_off
-  
-sync_on:  
-  movzwl LOCATION(%edi), %eax     /* move location offset to %eax and ON ascii code to %cl and call mp_poke*/
-  shll $1,%eax  
-  movb ON_CHAR(%edi), %cl
-  call mp1_poke
-  jmp sync_success
-
-sync_off:
-  movzwl LOCATION(%edi), %eax     /* move location offset to %eax and OFF ascii code to %cl and call mp_poke*/
-  shll $1,%eax
-  movb OFF_CHAR(%edi), %cl
-  call mp1_poke
-
-sync_success:       /*return 0*/
-  movl $0, %eax
-  jmp sync_tear_down
-
-sync_error:
-  movl $-1, %eax    /*return -1*/
-
-sync_tear_down:        
-  popl %edi         /*tear down frame*/
-  popl %esi
-  popl %ebx
-  leave
-  ret
-
-/*  *int search_util (unsigned long arg)
-            Interface: stack-based arguments 
-              Function: find a particular struct with given location
-             Registers: clobbers %eax, %ax, %ebx
-                 Input: two 2byte unsigned short integer 
-                Output: pointer to the node - successful
-                       -1 - fail
-*/
-search_util:
-  pushl %ebp            /*create stack frame*/
-  movl %esp, %ebp
-  pushl %ebx
-  pushl %esi
-  pushl %edi
-
-  movw 8(%ebp), %ax          /* %ax - input location */
-  movl mp1_list_head, %ebx   /* %ebx - pointer to head  */
-  
-search_base_case:       /*go through the list to find the node with given location*/
-  cmpl $0, %ebx               
-  je search_fail
-  cmpw %ax, LOCATION(%ebx)
-  je search_sucess
-  movl NEXT(%ebx), %ebx
-  jmp search_base_case
-
-
-search_sucess:       /*return the pointer to struct with corresponding location*/
-  movl %ebx, %eax
-  jmp search_tear_down
-
-search_fail:          /*return -1*/
-  movl $-1, %eax
-      
-search_tear_down:
-  popl %edi         /*tear down frame*/
-  popl %esi
-  popl %ebx
-  leave
-  ret
-
-
-.end
+		pushl	%ebp
+		movl	%esp, %ebp
+		pushl	%ebx
+		pushl 	%esi
+		pushl 	%edi
+		#call 	update_missiles
+		#call	redraw_bases
+		#call 	redraw_crosshairs
+		popl	%edi
+		popl	%esi
+		popl	%ebx
+		leave	
+		ret
+
+# int mp1_ioctl(unsigned long arg, unsigned int cmd)
+# The dispatch function for the MP1 ioctls - should use the cmd argument
+# and a jumptable to execute one of the specific ioctls implemented below.
+# Inputs   : unsigned long arg - parameter to the mp1_ioctl_....
+#          : unsigned int cmd  - specifies which mp1_ioctl_... function 
+#          :                     to execute
+# Outputs  : Returns an integer - depends on which ioctl() function is called
+# Registers: Standard C calling convention
+
+.globl mp1_ioctl
+mp1_ioctl:
+		movl	8(%esp), %eax
+		cmpl	$4, %eax			#eax - 4
+		jg		invalid
+		cmpl 	$0, %eax			#eax - 0
+		jl 		invalid
+		jmp 	*jump_table(,%eax,4)	#M[eax * 4 + jump table]
+
+invalid:
+		movl	$-1, %eax 		#set eax to -1 to return -1
+		ret
+
+jump_table:
+		.long mp1_ioctl_startgame, mp1_ioctl_addmissile, mp1_ioctl_movexhairs, mp1_ioctl_getstatus, mp1_ioctl_endgame
+		
+
+
+# ----------------- Functions private to this file -------------------
+# int update_missiles();
+# This function is a subtask of the tasklet itelf and should update the missiles
+# Should erase old missile images and create new missile images flying
+# Should draw explosion image 
+# Inputs: none
+# output: none
+# Registers: standard C calling convention
+update_missiles:
+		
+		ret
+
+# void redraw_bases();
+# This function should redraw the bases based on the status of their values ie alive or dead
+# Missiles may have destroyed them or flown over so the bases will need to be updated and redrawn.
+# input: none
+# output: none
+# registers: standard C calling convention
+redraw_bases:
+		ret
+
+# void redraw_crosshairs();
+# This function will redraw crosshairs based on their new position.
+# It will first get the crosshair position then fill it with the character for the crosshair.
+# input: none
+# output: none
+# registers: standard C calling convention
+redraw_crosshairs:
+		pushl	%ebp
+		movl	%esp, %ebp
+		pushl	%eax
+		pushl	%ecx
+		pushl	%edx
+		pushl	%edi
+		movl	crosshairs_y, %eax		#get xhair position by (y*80 + x)*2, 80 is width of screen
+		movl	crosshairs_x, %ecx		#Each is 2 bytes so you need to mult by 2 to get the right position
+		imull	%80, %eax
+		addl 	%ecx, %eax
+		shll	$1, %eax
+		movb	$43, %cl 
+		call 	mp1_poke
+		popl	%edi
+		popl	%edx
+		popl	%ecx
+		popl	%eax
+		leave
+		ret
+
+# void delete_missile();
+# This function should delete the missle from the game, along with deleting it from the linked list.
+# it should remove the missile from the list, fix the linked list, make sure you are not deleting the head,
+# then remove the missile completely so the game can continue. It should also be gone from the screen. 
+# input: none
+# output: none
+# registers: standard C calling convention
+delete_missile:
+		pushl 	%ebp
+		movl	%esp, %ebp
+		pushl	%esi
+		pushl	%ecx 
+		pushl	%edx
+		pushl	%edi
+		movl	mp1_missile_list, %ecx
+		cmpl	$0x0, %ecx
+		je 		delete_head 	#if the missile list is at head jump to head removal
+		
+
+		delete_missile_loop:
+				movl	NEXT(%ecx), %eax
+				#cmpl	%
+
+		delete_head:
+				#movl	
+		delete_end:
+				popl 	%edi
+				popl 	%edx
+				popl	%ecx
+				popl	%esi
+				leave
+				ret
+
+
+# void mp1_ioctl_startgame(unsigned long ignore);
+# Initialize the game and the variables needed for the game
+# inputs: variable that is ignored
+# outputs: none
+# Registers: none
+mp1_ioctl_startgame:
+		pushl 	%ebp
+		movl	%esp, %ebp
+		pushl	%edi
+		pushl 	%ebx
+		pushl	%esi
+		movl	$0, mp1_score
+		movl	$0x0, mp1_missile_list
+		movl 	$40, crosshairs_x
+		movl	$12, crosshairs_y
+		movl	$0x00111111, base_alive		#first 3 bytes are the bases and alive if non zero. set all to alive
+		popl	%esi
+		popl	%ebx
+		popl	%edi
+		leave
+		ret
+
+# int mp1_ioctl_addmissile(struct missile* user_missile);
+# Should add missiles to mp1_missile_list
+# inputs: pointer to the missile
+# outputs: 0 if success and -1 if fail
+# registers: standard C calling convention
+mp1_ioctl_addmissile:
+		ret
+
+# int mp1_ioctl_movexhairs(unsigned long xhair_delta_packed);
+# This function will move the cross hairs by erasing the old one 
+# It will then create a new crosshair at the updated location
+# input: a long int which contains the x and y value in the low 16 bits and high 16 bits respectively 
+# output: 0 always as it should not fail
+# registers: standard c calling convention
+mp1_ioctl_movexhairs:
+		pushl	%ebp
+		movl	%esp, %ebp
+		pushl	%eax
+		pushl	%ecx
+		pushl	%edx
+		pushl	%edi
+		pushl	%ebx
+		movl	crosshairs_y, %eax		#get xhair position by (y*80 + x)*2, 80 is width of screen
+		movl	crosshairs_x, %ecx		#Each is 2 bytes so you need to mult by 2 to get the right position
+		imull	%80, %eax
+		addl 	%ecx, %eax
+		shll	$1, %eax
+		movb	$32, %cl				#put space into cl to erase crosshair 
+		call 	mp1_poke
+		movl	$8(%ebp), %ebx
+		movw	%bx, %ecx				#movw or movl? also putting the low 16 bits into ecx and high 16 bits into eax
+		addl 	crosshairs_x, %ecx
+		sarl	$16, %ebx				#ecx contains x, eax contains y
+		movw	%bx, %eax
+		addl	%crosshairs_y, %eax
+		cmpl	$0, %ecx
+		jl		less_x
+		cmpl	$79, %ecx				#check with 0 and 79 as they are the limits
+		jg		greater_x
+		jmp 	y_check
+
+		less_x:
+				movl 	$0, %ecx		#if past the limits set to the limits i.e. 0/79 for x or 0/24 for y
+				jmp		y_check
+		greater_x:
+				movl	$79, %ecx
+		y_check:
+				cmpl	$0, %eax
+				jl		less_y
+				cmpl	$24, %eax
+				jg		greater_y
+				movl	%eax, crosshairs_y
+		less_y:
+				movl	$0, %ecx
+				jmp		finish_movecheck
+		greater_y:
+				movl	$24, %ecx
+		finish_movecheck:
+				movl	%ecx, crosshairs_x
+				movl	%eax, crosshairs_y
+				imull	%80, %eax			#get xhair position by (y*80 + x)*2
+				addl 	%ecx, %eax
+				shll	$1, %eax
+				movb	$43, %cl
+				call 	mp1_poke
+				popl	%ebx
+				popl	%edi
+				popl	%edx
+				popl	%ecx
+				popl	%eax
+				leave
+				ret
+
+# int mp1_ioctl_getstatus(unsigned long* user_status);
+# Should receive the current score and the status of the 3 cities.
+# input: a pointer to the 32 bit int in user space
+# output: 0 if success and -1 if fail
+# registers: standard c calling convention
+mp1_ioctl_getstatus:
+		push 	%ebp
+		movl	%esp, %ebp
+		pushl	%ebx
+		pushl	%ecx
+		pushl	%edi
+		pushl	%esi
+		pushl	%edx
+		movl	8(%ebp), %edx		#edx for user status, ecx for register with score, ebx for register with score and base status
+		movl	mp1_score, %ecx
+		movl	%ecx, %ebx
+		movb	base_alive, %eax	#store first byte aka city into eax
+		cmpl	$0, %eax 			#check if city is dead
+		je		next_city
+		addl	$0x00010000, %ebx
+
+		#add the values of 0x10000, 0x20000, 0x40000 to get 1 bits into the proper positions of 16, 17, 18
+
+		next_city:
+				movb	base_alive + 1, %eax	#store the next byte into EAX for the calculations
+				cmpl	$0, %eax
+				je 		last_city
+				addl	$0x00020000, %ebx
+		last_city:
+				movb	base_alive + 2, %eax
+				cmpl	$0, %eax
+				je 		copy
+				addl	$0x00040000, %ebx
+		copy:
+				pushl	$4					#put the proper values into the stack before calling mp1_copy_to_user
+				pushl	%ebx
+				pushl	%edx
+				call	mp1_copy_to_user
+				addl	$12, %esp			#move stack pointer back down to proper position
+				cmpl	$0, %eax	
+				je 		done
+				movl 	$-1, %eax
+		done:
+				popl 	%edx
+				popl	%esi
+				popl	%edi
+				popl 	%ecx
+				popl	%ebx
+				leave
+				ret
+
+# int mp1_ioctl_endgame(unsigned long ignore);
+# Used when game is over to clean up work.
+# Should clear linked list, free memory, and make sure there are no issues with exiting.
+# input: ignored
+# output: none
+# registers: standard c calling convention
+mp1_ioctl_endgame:
+		push 	%ebp
+		movl	%esp, %ebp
+		pushl 	%edi
+		pushl	%ebx
+		pushl	%esi
+
+		endgame_loop:
+				#cmpl 	$0x0, mp1_missile_list
+				#je		endgame_end
+				#jmp		delete_missile
+				#jmp 	endgame_loop
+
+		endgame_end:
+				popl 	%esi
+				popl	%ebx
+				popl	%edi
+				leave
+				ret
+
+
+

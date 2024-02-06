@@ -1,45 +1,50 @@
-/*
- * tab:4
+/*									tab:8
  *
  * modex.h - header file for mode X 320x200 graphics
  *
- * "Copyright (c) 2004-2009 by Steven S. Lumetta."
+ * "Copyright (c) 2004-2011 by Steven S. Lumetta."
  *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation for any purpose, without fee, and without written agreement is
  * hereby granted, provided that the above copyright notice and the following
  * two paragraphs appear in all copies of this software.
- *
- * IN NO EVENT SHALL THE AUTHOR OR THE UNIVERSITY OF ILLINOIS BE LIABLE TO
- * ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
- * DAMAGES ARISING OUT  OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION,
- * EVEN IF THE AUTHOR AND/OR THE UNIVERSITY OF ILLINOIS HAS BEEN ADVISED
+ * 
+ * IN NO EVENT SHALL THE AUTHOR OR THE UNIVERSITY OF ILLINOIS BE LIABLE TO 
+ * ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL 
+ * DAMAGES ARISING OUT  OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, 
+ * EVEN IF THE AUTHOR AND/OR THE UNIVERSITY OF ILLINOIS HAS BEEN ADVISED 
  * OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * THE AUTHOR AND THE UNIVERSITY OF ILLINOIS SPECIFICALLY DISCLAIM ANY
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE
+ * 
+ * THE AUTHOR AND THE UNIVERSITY OF ILLINOIS SPECIFICALLY DISCLAIM ANY 
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE 
  * PROVIDED HEREUNDER IS ON AN "AS IS" BASIS, AND NEITHER THE AUTHOR NOR
- * THE UNIVERSITY OF ILLINOIS HAS ANY OBLIGATION TO PROVIDE MAINTENANCE,
+ * THE UNIVERSITY OF ILLINOIS HAS ANY OBLIGATION TO PROVIDE MAINTENANCE, 
  * SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS."
  *
- * Author:        Steve Lumetta
- * Version:       2
- * Creation Date: Thu Sep  9 23:08:21 2004
- * Filename:      modex.h
+ * Author:	    Steve Lumetta
+ * Version:	    4
+ * Creation Date:   Thu Sep  9 23:08:21 2004
+ * Filename:	    modex.h
  * History:
- *    SL    1    Thu Sep  9 23:08:21 2004
- *        First written.
- *    SL    2    Sat Sep 12 13:35:41 2009
- *        Integrated original release back into main code base.
+ *	SL	1	Thu Sep  9 23:08:21 2004
+ *		First written.
+ *	SL	2	Sat Sep 12 13:35:41 2009
+ *		Integrated original release back into main code base.
+ *	SL	3	Sat Sep 10 20:40:18 2011
+ *		Modified for MP2 F11 adventure game.
+ *	SL	4	Sat Sep 14 16:26:25 2011
+ *		Split fill_palette by mode and cleaned up code for release.
  */
 
 #ifndef MODEX_H
 #define MODEX_H
 
+
 #include "text.h"
 
-/*
+
+/* 
  * IMAGE  is the whole screen in mode X: 320x200 pixels in our flavor.
  * SCROLL is the scrolling region of the screen.
  *
@@ -49,40 +54,15 @@
  * Y_DIM   is a vertical screen dimension in pixels.
  */
 #define IMAGE_X_DIM     320   /* pixels; must be divisible by 4             */
-#define IMAGE_Y_DIM     182   /* pixels                                     */
+#define IMAGE_Y_DIM     200   /* pixels                                     */
 #define IMAGE_X_WIDTH   (IMAGE_X_DIM / 4)          /* addresses (bytes)     */
-#define SCROLL_X_DIM    IMAGE_X_DIM                /* full image width      */
-#define SCROLL_Y_DIM    IMAGE_Y_DIM                /* full image width      */
+#define SCROLL_X_DIM	IMAGE_X_DIM                /* full image width      */
+#define SCROLL_Y_DIM    (IMAGE_Y_DIM - 18)                /* full image width      */
 #define SCROLL_X_WIDTH  (IMAGE_X_DIM / 4)          /* addresses (bytes)     */
+#define STATUS_BAR_SIZE ((18 * IMAGE_X_DIM) / 4) // size of status bar which is x dim * (16 + 1 + 1 for each extra pixel above and below) divided by 4
+//Array for the buffer
+unsigned char STATUS_DATA[(STATUS_BAR_SIZE * 4)];
 
-/*
-* X_DIM is a horizontal status bar dimesion in pixels
-* Y_DIM is a horizontal status bar dimension in pixels
-* X_WIDTH is a horizontal status bar dimension in 'natural' units
-*/
-#define STATUS_X_DIM    320
-#define STATUS_Y_DIM    18
-#define STATUS_X_WIDTH  (STATUS_X_DIM / 4)
-
-#define SEC             32            /* divide frequency to make second*/
-#define HALF_SEC        16            /* divide frequency to makehalf a second*/
-#define WHITE           0x3F
-#define T_OFFSET        0x40
-
-#define TXT_X_OFFSET    TXT_X_DIM/2   /* offset to center the string */
-#define TXT_X_DIM       104           /* max length of fruit string */
-#define TXT_Y_DIM       16            /* height of fruit string */
-#define TXT_Y_LIMIT     6             /* minimun y distance string can go */
-#define TXT_DURATION    112           /* TXT lasting about 3.5 sec */
-
-#define TUX_BUTTON_LEFT  0xBF
-#define TUX_BUTTON_DOWN  0xDF
-#define TUX_BUTTON_RIGHT 0x7F
-#define TUX_BUTTON_UP    0xEF
-
-#define DEFAULT_LED_VALUE 0x040F0000  /* dot in the middle and 4leds light up */
-#define NUM_FRUITS         8
-#define NUM_HEAD_CYCLES   10
 
 /*
  * NOTES
@@ -126,7 +106,7 @@
  * scratch pad, copy the drawn screen as a whole into one of two buffers
  * in video memory, and switch the picture between the two buffers.  The
  * cost of the copy is negligible; the cost of writing to video memory
- * instead is quite high (under VirtualPC).
+ * instead is quite high (under most virtual machines).
  *
  * In order to reduce drawing time, we reuse most of the screen data between
  * video frames.  New data are drawn only when the viewing window moves
@@ -136,49 +116,29 @@
  */
 
 /* configure VGA for mode X; initializes logical view to (0,0) */
-extern int set_mode_X(
-        void (*horiz_fill_fn)(int, int, unsigned char[SCROLL_X_DIM]),
-        void (*vert_fill_fn)(int, int, unsigned char[SCROLL_Y_DIM]));
+extern int set_mode_X (void (*horiz_fill_fn)
+                            (int, int, unsigned char[SCROLL_X_DIM]),
+		       void (*vert_fill_fn) 
+		            (int, int, unsigned char[SCROLL_Y_DIM]));
 
 /* return to text mode */
-extern void clear_mode_X();
+extern void clear_mode_X ();
 
 /* set logical view window coordinates */
-extern void set_view_window(int scr_x, int scr_y);
+extern void set_view_window (int scr_x, int scr_y);
 
 /* show the logical view window on the monitor */
-extern void show_screen();
+extern void show_screen ();
 
 /* clear the video memory in mode X */
-extern void clear_screens();
+extern void clear_screens ();
 
-/*
- * draw a 12x12 block with upper left corner at logical position
- * (pos_x,pos_y); any part of the block outside of the logical view window
- * is clipped (cut off and not drawn)
- */
-extern void draw_full_block(int pos_x, int pos_y, unsigned char* blk);
+extern void show_status_bar(const char* string, unsigned char* buffer, int position);
 
 /* draw a horizontal line at vertical pixel y within the logical view window */
-extern int draw_horiz_line(int y);
+extern int draw_horiz_line (int y);
 
 /* draw a vertical line at horizontal pixel x within the logical view window */
-extern int draw_vert_line(int x);
-
-/* show the status bar on the monitor */
-extern void show_status_bar(int level, int n_fruits,int time, int background_color);
-
-/* set particular palette address with rgb value */
-extern void set_palette_colors(unsigned char idx, unsigned char r, unsigned char g, unsigned char b);
-
-/* draw player image and save background */
-extern void draw_mask(int pos_x, int pos_y, unsigned char* mask, unsigned char* blk, unsigned char* old_block_buffer);
-
-/*save background image to draw text on two buffers: one for drawing and one for masking */
-extern void draw_fruit_txt(int pos_x, int pos_y, unsigned char* old_fruit_buffer, unsigned char* fruit_txt_buffer);
-
-/* draw buffer that has text image */
-extern void draw_string(int pos_x, int pos_y, unsigned char* string_buffer);
-
+extern int draw_vert_line (int x);
 
 #endif /* MODEX_H */

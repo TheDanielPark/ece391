@@ -8,21 +8,19 @@
 #include "i8259.h"
 #include "debug.h"
 #include "tests.h"
-#include "idt.h"
-#include "rtc.h"
+#include "idt_exceptions.h"
 #include "keyboard.h"
+#include "rtc.h"
 #include "paging.h"
-
-#include "fs_driver.h"
+#include "filesystem.h"
+#include "scheduler.h"
 #include "syscall.h"
-#define RUN_TESTS
+
+extern int32_t execute(const uint8_t* command);
 
 /* Macros. */
 /* Check if the bit BIT in FLAGS is set. */
 #define CHECK_FLAG(flags, bit)   ((flags) & (1 << (bit)))
-
-// Base address of file system
-unsigned int FILE_SYS_BASE_ADDR;
 
 /* Check if MAGIC is valid and print the Multiboot information structure
    pointed by ADDR. */
@@ -61,9 +59,12 @@ void entry(unsigned long magic, unsigned long addr) {
         int mod_count = 0;
         int i;
         module_t* mod = (module_t*)mbi->mods_addr;
+
+        /* Init filesystem */
+        filesystem_init((boot_block_t *)(mod->mod_start));
+
         while (mod_count < mbi->mods_count) {
             printf("Module %d loaded at address: 0x%#x\n", mod_count, (unsigned int)mod->mod_start);
-            FILE_SYS_BASE_ADDR = (unsigned int)mod->mod_start;
             printf("Module %d ends at address: 0x%#x\n", mod_count, (unsigned int)mod->mod_end);
             printf("First few bytes of module:\n");
             for (i = 0; i < 16; i++) {
@@ -146,34 +147,33 @@ void entry(unsigned long magic, unsigned long addr) {
         ltr(KERNEL_TSS);
     }
 
-    /* Fill the IDT with entries */
+    /* reset the screen */
+    reset();
+
+    /* Init IDT table */
     idt_init();
 
-    /* Initialize devices, memory, filesystem, enable device interrupts on the
-     * PIC, any other initialization stuff... */
+    /* Init the PIC */
     i8259_init();
+
+    /* Initialize RTC and keyboard, interrupts are enabled on PIC in inits */
+    rtc_initialize();
     keyboard_init();
-    rtc_init();
-    paging_init();
 
-    file_system_init();
-    fop_init();
+    /* Initialize paging */
+    paging_initialize();
 
-    /* Enable interrupts */
-    /* Do not enable the following until after you have set up your
-     * IDT correctly otherwise QEMU will triple fault and simple close
-     * without showing you any output */
-    printf("Enabling Interrupts\n");
-    sti();
+    /* initialize terminal */
+    init_terminal();
+
+    /* Initialize PIT */
+    pit_init();
+
 
 #ifdef RUN_TESTS
     /* Run tests */
     launch_tests();
 #endif
-    printf("Got past tests!\n");
-    /* Execute the first program ("shell") ... */
-    //execute("  testprint");
-    execute((const uint8_t*) "shell");
 
     /* Spin (nicely, so we don't chew up cycles) */
     asm volatile (".1: hlt; jmp .1;");

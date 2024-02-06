@@ -1,399 +1,370 @@
 #include "tests.h"
 #include "x86_desc.h"
 #include "lib.h"
-#include "idt.h"
+#include "keyboard.h"
+#include "filesystem.h"
 #include "rtc.h"
-#include "fs_driver.h"
 #include "terminal.h"
 
 #define PASS 1
 #define FAIL 0
 
 /* format these macros as you see fit */
-#define TEST_HEADER     \
-    printf("[TEST %s] Running %s at %s:%d\n", __FUNCTION__, __FUNCTION__, __FILE__, __LINE__)
-#define TEST_OUTPUT(name, result)    \
-    printf("[TEST %s] Result = %s\n", name, (result) ? "PASS" : "FAIL");
+#define TEST_HEADER 	\
+	printf("[TEST %s] Running %s at %s:%d\n", __FUNCTION__, __FUNCTION__, __FILE__, __LINE__)
+#define TEST_OUTPUT(name, result)	\
+	printf("[TEST %s] Result = %s\n", name, (result) ? "PASS" : "FAIL");
 
 static inline void assertion_failure(){
-    /* Use exception #15 for assertions, otherwise
-       reserved by Intel */
-    asm volatile("int $15");
+	/* Use exception #15 for assertions, otherwise
+	   reserved by Intel */
+	asm volatile("int $15");
 }
 
 
 /* Checkpoint 1 tests */
 
 /* IDT Test - Example
- *
+ * 
  * Asserts that first 10 IDT entries are not NULL
  * Inputs: None
  * Outputs: PASS/FAIL
  * Side Effects: None
  * Coverage: Load IDT, IDT definition
- * Files: x86_desc.h/S idt.c
+ * Files: x86_desc.h/S
  */
-int idt_test() {
-    TEST_HEADER;
+int idt_test(){
+	TEST_HEADER;
 
-    int i;
-    int result = PASS;
-    for (i = 0; i < 10; ++i){
-        if ((idt[i].offset_15_00 == NULL) &&
-            (idt[i].offset_31_16 == NULL)){
-            assertion_failure();
-            result = FAIL;
-        }
-    }
+	int i;
+	int result = PASS;
+	for (i = 0; i < 10; ++i){
+		if ((idt[i].offset_15_00 == NULL) && 
+			(idt[i].offset_31_16 == NULL)){
+			assertion_failure();
+			result = FAIL;
+		}
+	}
 
-    return result;
+	return result;
 }
 
-/* division_exception_test
-* Cause blue screen of death
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays fault message
-* Coverage: Exception handling
-* Files: idt.c
-*/
-int division_exception_test() {
-    TEST_HEADER;
-    int a = 0;
-    int b = 4;
-    b = b / a;
-    return FAIL; // If exception BSODs, we never get here
+// add more tests here
+
+/* Keyboard Test - Example
+ * 	Description: Tests keyboard functionality
+ * 	Inputs: None
+ * 	Outputs: PASS/FAIL
+ * 	Side Effects: None
+ */
+int keyboard_test() {
+	TEST_HEADER;
+	
+	/*
+	printf("\n");
+	if(key_press(30) != 'a') {
+		return FAIL;
+	}
+	if(key_press(2) != '1') {
+		return FAIL;
+	}
+	if(key_press(53) != '/') {
+		return FAIL;
+	}
+	*/
+	return PASS;
 }
 
-/* syscall_handler_test
-* Cause blue screen of death
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays fault message
-* Coverage: Exception handling
-* Files: idt.c
-*/
-int syscall_handler_test() {
-    TEST_HEADER;
-    __asm__("int    $0x80");
-    return FAIL; // If exception BSODs, we never get here
+/* divide_error
+ * 	Description: Tests divide by zero functionality
+ * 	Inputs: None
+ * 	Outputs: PASS/FAIL
+ * 	Side Effects: None
+ */
+void divide_error_test()
+{
+	TEST_HEADER;
+
+	int i = 5;
+	int j;
+	for(j =  0; j < 1; j++)
+	{
+		i /= j;
+	}
 }
 
-/* paging_test
-* Checks that the kernel and video memory addresses can be dereferenced.
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays fault message
-* Coverage: Kernel and video memory in physical memory from paging.
-* Files: paging.c
-*/
-int paging_test() {
-    TEST_HEADER;
-    //Used to test dereference locations.
-    char result;
-    char* pointer = (char*)0x400000;    //Kernel memory
-    result = *pointer;
-
-    pointer = (char*)0xB8000;                    //Video memory address
-    result = *pointer;
-
-    pointer = (char*)0x7FFFFF;                 //Bottom of kernel memory
-    result = *pointer;
-
-    pointer = (char*)0xB8FFF;                 //Bottom of video memory
-    result = *pointer;
-
-    return PASS; // If exception BSODs, we never get here
+/* page_fault_test
+ * 	Description: Tests page fault
+ * 	Inputs: None
+ * 	Outputs: PASS/FAIL
+ * 	Side Effects: None
+ */
+void page_fault_test()
+{
+	TEST_HEADER;
+	
+	int a;
+	int * b;
+	b =  (int *) (0x0);
+	a = *b;
 }
 
-/* kernel_up_bound_test
-* Check to see if the memory before the kernel causes a page fault.
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays fault message
-* Coverage: Page fault handling of location before kernel memory.
-* Files: paging.c
-*/
-int kernel_up_bound_test() {
-    TEST_HEADER;
-    char result;
-    char* pointer = (char*)0x3FFFFF;
-    result = *pointer;
-    return FAIL; // If exception BSODs, we never get here
-}
+/* page_init_check
+ * 	Description: Tests page initialization. Sanity check :)
+ * 	Inputs: None
+ * 	Outputs: PASS/FAIL
+ * 	Side Effects: None
+ */
+int page_init_check()
+{
+	TEST_HEADER;
 
-/* kernel_low_bound_test
-* Check to see if the memory after the kernel causes a page fault.
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays fault message
-* Coverage: Page fault handling of location after kernel memory.
-* Files: paging.c
-*/
-int kernel_low_bound_test() {
-    TEST_HEADER;
-    char result;
-    char* pointer = (char*)0x800000;
-    result = *pointer;
-    return FAIL; // If exception BSODs, we never get here
-}
+	int video = 0xB8000;
+	int kernel = 0x400000;
+	
+	int a;
+	int * b;
+	b =  (int *) (video);
+	a = *b;
 
-/* vidmem_up_bound_test
-* Check to see if the memory before video memory causes a page fault.
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays fault message
-* Coverage: Page fault handling of location before video memory.
-* Files: paging.c
-*/
-int vidmem_up_bound_test() {
-    TEST_HEADER;
-    char result;
-    char* pointer = (char*) 0xB7FFF;
-    result = *pointer;
-    return FAIL; // If exception BSODs, we never get here
-}
+	b = (int *) (kernel);
+	a = *b;
 
-/* vidmem_low_bound_test
-* Check to see if the memory after video memory causes a page fault.
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays fault message
-* Coverage: Page fault handling of location after video memory.
-* Files: paging.c
-*/
-int vidmem_low_bound_test() {
-    TEST_HEADER;
-    char result;
-    char* pointer = (char*) 0xB9000;
-    result = *pointer;
-    return FAIL; // If exception BSODs, we never get here
-}
-
-/* null_test
-* Cause blue screen of death if dereferencing 0 causes a page fault
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays fault message
-* Coverage: Page fault handling of location 0.
-* Files: paging.c
-*/
-int null_test() {
-    TEST_HEADER;
-    char result;
-    char* pointer = (char*) 0;
-    result = *pointer;
-    return FAIL; // If exception BSODs, we never get here
-}
-
-/* seg_not_present_exception_test
-* Cause blue screen of death if a keyboard is pressed
-* Inputs: None
-* Outputs: None
-* Side Effects: Halts the system and displays segment not present message
-* Coverage: Exception handling
-* Files: idt.c
-*/
-int seg_not_present_exception_test() {
-    TEST_HEADER;
-    idt[KEYBOARD_VEC_NUM].present = 0;
-    while(1);
-    return FAIL;
+	return PASS;
 }
 
 /* Checkpoint 2 tests */
 
-/* rtc_read_write_test
-* Test all RTC frequencies
-* Inputs: None
-* Outputs: None
-* Side Effects: Opens the RTC and writes many different frequencies to it.
-* Coverage: RTC syscall functions
-* Files: rtc.c
-*/
-int rtc_read_write_test() {
-    TEST_HEADER;
-    uint32_t i;
-    uint32_t j;
-    int32_t retval = 0;
+/* read_fish_frame0
+ * 	Description: Reads the frame0.txt file.
+ * 	Inputs: None
+ * 	Outputs: None
+ * 	Side Effects: Prints the content of the file.
+ */
+void read_fish_frame0()
+{
+	int i;
+	int size = 200;
+	uint8_t buf[size];
+	dentry_t dentry;
 
-    retval += rtc_open(NULL);
-    for(i = 2; i <= 1024; i*=2) {
-        retval += rtc_write(NULL, &i, sizeof(uint32_t));
-        printf("Testing: %d Hz\n[", i);
-        for(j = 0; j < i; j++) {
-            retval += rtc_read(NULL, NULL, NULL);
-            printf("#");
-        }
-        printf("]\n");
-    }
-    if(retval == 0) {
-        return PASS;
-    } else {
-        return FAIL;
-    }
+	for(i = 0; i < size; i++)
+	{
+		buf[i] = '\0';
+	}
 
+	clear();
+
+	read_dentry_by_name((uint8_t *)"frame0.txt", &dentry);
+	read_data(dentry.inode_num, 0, buf, size);
+
+	printf("\n\n ");
+	for(i = 0; i < size; i++)
+	{
+		printf("%c", buf[i]);
+	}
+
+	printf("\n file name: ");
+	terminal_write(NULL, &dentry.filename, FILENAME_LEN);
 }
 
-/*    print_filename
-*    inputs: buf - buffer that contains filename to print
-*    Function: prints file name with emtpy spaces
-*    Files: fs_driver.c
-*/
-void print_filename(uint8_t* buf){
-    int i =0;
-    for(i =0;i<MAX_FILENAME;i++){
-        if(buf[i] != NULL){
-            putc(buf[i]);
-        }else{
-            printf(" ");
-        }
-    }
+/* read_fish_frame1
+ * 	Description: Reads the frame1.txt file.
+ * 	Inputs: None
+ * 	Outputs: None
+ * 	Side Effects: Prints the content of the file.
+ */
+void read_fish_frame1()
+{
+	int i;
+	int size = 200;
+	uint8_t buf[size];
+	dentry_t dentry;
+
+	for(i = 0; i < size; i++)
+	{
+		buf[i] = '\0';
+	}
+
+	clear();
+
+	read_dentry_by_name((uint8_t *)"frame1.txt", &dentry);
+	read_data(dentry.inode_num, 0, buf, size);
+
+	printf("\n\n ");
+	for(i = 0; i < size; i++)
+	{
+		printf("%c", buf[i]);
+	}
+
+	printf("\n file name: ");
+	terminal_write(NULL, &dentry.filename, FILENAME_LEN);
 }
 
-/*    dir_test
-*    inputs: none
-*    Coverage: checks correct functionality of read_dentry_by_index, dir_open, dir_read,dir_close,dir_write
-*    Function: prints the list of filename and corresponding file types and file sizes.
-*    Files: fs_driver.c
-*/
-int dir_test(){
-    uint8_t empty_filename;
-    int32_t empty_fd;
-    uint8_t buf[32];
-    int32_t empty_nbytes;
-    int32_t size;
-    inode_t* cur_inode_block_ptr;
-    dentry_t* cur_dentry;
-    int i;
+/* read_large_file
+ * 	Description: Reads a large file
+ * 	Inputs: None
+ * 	Outputs: None
+ * 	Side Effects: Prints the content of the file.
+ */
+void read_large_file()
+{
+	int i;
+	int size = 6000;
+	uint8_t buf[size];
+	dentry_t dentry;
 
-    clear();
-    dir_open(&empty_filename);
-    uint32_t dentry_num = boot_block_ptr->num_dentries;
+	for(i = 0; i < size; i++)
+	{
+		buf[i] = '\0';
+	}
 
-    for(i=0;i<dentry_num;i++){
-        cur_dentry = (dentry_t*)&(boot_block_ptr->dentry[i]);
-        cur_inode_block_ptr = (inode_t*)(inode_ptr + (cur_dentry->inode_num));
-        size = cur_inode_block_ptr->length;
-        dir_read(empty_fd,buf,empty_nbytes);
-        printf("file_name: ");
-        print_filename(buf);
-        printf("  file_type: %d, file_size: %d", cur_dentry->ftype, size);
-        printf("\n");
-    }
-    if(dir_write(empty_fd,buf,empty_nbytes) != -1){
-        return FAIL;
-    }
-    dir_close(empty_fd);
-    return PASS;
+	clear();
+
+	read_dentry_by_name((uint8_t *)"verylargetextwithverylongname.tx", &dentry);
+	read_data(dentry.inode_num, 0, buf, size);
+
+	printf("\n\n ");
+	for(i = 0; i < size; i++)
+	{
+		printf("%c", buf[i]);
+	}
+
+	printf("\n file name: ");
+	terminal_write(NULL, &dentry.filename, FILENAME_LEN);
 }
 
-/*    term_driver_test
-*    inputs: none
-*    Coverage: Checks the functionality of terminal open, read, write, and close.
-*    Function: Reads from user and then write back data that was read.
-*    Files: terminal.c, keyboard.c
-*/
-int term_driver_test(){
-    TEST_HEADER;
-    //int result = PASS;
-    int nbytes;
-    char buf[1024];
-    while(1){
-        //Testing a buffer smaller than 128.
-        terminal_write(0, (uint8_t*)"TESTING size 10\n", 16);
-        nbytes = terminal_read(0, buf, 10);
-        terminal_write(0, buf, nbytes);
+/* ls
+ * 	Description: Lists the file in the current directory.
+ * 	Inputs: None
+ * 	Outputs: None
+ * 	Side Effects: Prints the file names, file type, and file size
+ *	of the files in the directory.
+ */
+void ls()
+{
+	int i;
 
-        //Testing a buffer at the max buffer size
-        terminal_write(0, (uint8_t*)"TESTING size 128\n", 17);
-        nbytes = terminal_read(0, buf, 128);
-        terminal_write(0, buf, nbytes);
+	clear();
+	printf("\n\n ");
 
-        //Testing a buffer greater than the max buffer size
-        terminal_write(0, (uint8_t*)"TESTING size 129\n", 17);
-        nbytes = terminal_read(0, buf, 150);
-        terminal_write(0, buf, nbytes);
-    }
-    return PASS;
+	for(i = 0; i < (int)boot_block_addr->dir_count; i++)
+	{
+		dentry_t dentry;
+		read_dentry_by_index(i, &dentry);
+		inode_t* ptr = dentry.inode_num + inode_addr;
+		printf("filename:    ");
+		terminal_write(NULL, &dentry.filename, FILENAME_LEN);
+		printf(",  file_type: %d, file_size: %d", dentry.filetype, ptr->length);
+		printf("\n");
+	}
 }
 
+/* read_grep
+ * 	Description: Reads the grep file
+ * 	Inputs: None
+ * 	Outputs: None
+ * 	Side Effects: Prints the content of the file.
+ */
+void read_grep()
+{
+	int i;
+	int size = 6000;
+	uint8_t buf[size];
 
-/*    file_test
-*    inputs: none
-*    Coverage: checks correct functionality of read_dentry_by_name, file_open, file_read, file_close,file_write, read_data
-*    Function: prints the data within file
-*    Files: fs_driver.c
-*/
-int file_test(){
-    uint8_t fname[MAX_FILENAME] = "grep";
-    int32_t fd = FD_BEGIN;
-    int32_t bytes_to_read;
-    uint8_t block_buf[BLOCK_SIZE];
-    int32_t bytes_read;
-    int32_t total_bytes_read = 0;
-    int i;
-    clear();
-    if(file_open((uint8_t*)&fname) == -1){
-        printf("file does not exist");
-        return PASS;
-    }
+	reset();
+	
+	for(i = 0; i < size; i++)
+	{
+		buf[i] = '\0';
+	}
 
-    bytes_to_read = BLOCK_SIZE; //divide this number by 4 if you wanna see ELF in big files
-    while(1){
-        bytes_read = file_read(fd, block_buf, bytes_to_read);
-        for(i =0; i <bytes_read ;i++){
-            if(block_buf[i] != NULL){
-                putc(block_buf[i]);
-            }
-        }
-        printf("\n");
-        printf("bytes_read: %d\n",bytes_read);
+	printf("\n\n ");
 
-        total_bytes_read += bytes_read;
-        if(bytes_read == 0){
-            printf("you have reached the end of the file\n");
-            break;
-        }
-        //break;       //comment out if you wanna see ELF in big files
-    }
-    printf("Total bytes read: %d\n",total_bytes_read );
-    if(file_write(FD_BEGIN,block_buf,bytes_read) != -1){
-        return FAIL;
-    }
+	dentry_t dentry;
+	read_dentry_by_name((uint8_t *)"ls", &dentry);
+	read_data(dentry.inode_num, 0, buf, size);
 
-    file_close(FD_BEGIN);
-    return PASS;
+	terminal_write(NULL, &buf, size);
 }
+
+/* rtc_test_freq
+ * 	Description: Shows the changing rtc frequency.
+ * 	Inputs: None
+ * 	Outputs: None
+ * 	Side Effects: Prints 1 to the terminal and prints at the
+ *	rate at which rtc is set currently.
+ */
+void rtc_test_freq()
+{
+	int i;
+
+	set_frequency(2);
+	for(i = 0; i < 1000000000; i++) {
+		
+	}
+	clear();
+	set_frequency(8);
+	for(i = 0; i < 1000000000; i++) {
+		
+	}
+	clear();
+	set_frequency(16);
+	for(i = 0; i < 1000000000; i++) {
+		
+	}
+	clear();
+}
+
+/* key_test
+ * 	Description: Clears the terminal.
+ * 	Inputs: None
+ * 	Outputs: None
+ * 	Side Effects: Clears the terminal.
+ */
+void key_test() 
+{
+	reset();
+}
+
+extern int32_t halt(uint8_t status);
+extern int32_t execute(const uint8_t* command);
+extern int32_t read(int32_t fd, void* buf, int32_t nbytes);
+extern int32_t write(int32_t fd, const void* buf, int32_t nbytes);
+extern int32_t open(const uint8_t* filename);
+extern int32_t close(int32_t fd);
 
 /* Checkpoint 3 tests */
 /* Checkpoint 4 tests */
-/* Checkpoint 5 tests */
 
+int syscall_test()
+{
+	int ret;
+	reset();
+	ret = execute((const uint8_t*)"shell");
+	return ret;
+}
+/* Checkpoint 5 tests */
 
 /* Test suite entry point */
 void launch_tests(){
-    /* ---- Checkpoint 1 ---- */
-    //TEST_OUTPUT("idt_test", idt_test());
-    //TEST_OUTPUT("division_exception_test", division_exception_test());
-    //TEST_OUTPUT("syscall_handler_test", syscall_handler_test());
-    //TEST_OUTPUT("seg_not_present_exception_test: PRESS A BUTTON TO FIND OUT ", seg_not_present_exception_test());
-
-    /* ---- Paging Tests ---- */
-    //TEST_OUTPUT("paging_test", paging_test());
-    //TEST_OUTPUT("kernel_up_bound_test", kernel_up_bound_test());
-    //TEST_OUTPUT("kernel_low_bound_test", kernel_low_bound_test());
-    //TEST_OUTPUT("vidmem_up_bound_test", vidmem_up_bound_test());
-    //TEST_OUTPUT("vidmem_low_bound_test", vidmem_low_bound_test());
-    //TEST_OUTPUT("null_test", null_test());
-
-    /* ---- File System Tests ---- */
-    //TEST_OUTPUT("dir_test", dir_test());
-    //TEST_OUTPUT("file_test", file_test());
-
-    /* ---- RTC Tests ---- */
-    //TEST_OUTPUT("rtc_read_write_test", rtc_read_write_test());
-
-    /* ---- Terminal Driver Tests ---- */
-    //TEST_OUTPUT("term_driver_test", term_driver_test());
+	//TEST_OUTPUT("idt tests", idt_test());
+	// launch your tests here
+	//TEST_OUTPUT("keyboard test", keyboard_test());
+	//page_fault_test();
+	//divide_error_test();
+	//TEST_OUTPUT("page fault", page_init_check());
+	//read_fish_frame0();
+	//read_fish_frame1();
+	//read_large_file();
+	//ls();
+	//read_grep();
+	//rtc_test_freq();
+	//key_test();
+	//read_file_data();
+	//read_file_data2();
+	//read_dir();
+	//rtc_test_freq();
+	//reset();
+	//syscall_test();
 }

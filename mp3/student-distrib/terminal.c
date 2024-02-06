@@ -1,143 +1,171 @@
-#include "terminal.h"
-#include "keyboard.h"
 #include "i8259.h"
+#include "keyboard.h"
 #include "lib.h"
-
-#define BCKSPACE    0x08
-
-//Holds the values entered by the keyboard
-static char char_buffer[BUFFER_SIZE];
-//Flag to break out of read loop.
-volatile static int enter_flag = 0;
-//Keeps track of the current location to be filled in the char_buffer
-static int char_count = 0;
+#include "tests.h"
+#include "terminal.h"
+#include "syscall.h"
+#include "scheduler.h"
 
 
-/* int32_t terminal_read(int32_t fd, void* buf, int32_t nbytes);
- * Reads in keyboard presses and stores it in the char_buffer
- * until the newline is entered. It then stores the resulting char_buffer
- * in the buf array entered by the user.
- *
- * Inputs: fd - The file descriptor value.
- *        buf - The array that terminal read will be storing the entered
- *              keyboard text to.
- *     nbytes - The maximum number of characters that can be entered in buf.
- * Return Value: The number of bytes (characters) written to the buf array.
- * Side effects: char_buffer, char_count, and enter_flag are changed */
-int32_t terminal_read(int32_t fd, void* buf, int32_t nbytes) {
-    int bytes_read = 0;
+/* terminal_read
+ * 	Description: Reads the inputs typed in terminal.
+ * 	Inputs: fd, buf, nbytes
+ * 	Outputs: Returns number of bytes read.
+ * 	Side Effects: Reads the input from the terminal.
+ */
+int32_t terminal_read(uint32_t fd, uint32_t offset, uint8_t *buf, uint32_t nbytes)
+{
+    // initialize variables
     int i;
+    int8_t count;
+    count = 0;
 
-    //Fills in the buffer as the keyboard interrupts. Exits after newline.
-    while(enter_flag == 0){}
+    // get buffer
+    uint8_t* tempBuffer = buf;
 
+    //enable interrupts and check if user pressed enter
+    sti();
+    while(1) {if (term_arr[curr_terminal].enterFlag && (keyBuffer[0] != '\0') && (term_arr[curr_process].visible) == 1) break;}
+
+    //mask interrupts
     cli();
-    //The max size of the buffer returned ranges from 1 to 128.
-    if(nbytes < BUFFER_SIZE) {
-        for(i = 0; i < nbytes; ++i) {
-            //Fills in the user entered buffer with the resulting characters.
-            ((char*) buf)[i] = char_buffer[i];
-            char_buffer[i] = ' ';                   //Clears char_buffer
-            //If it is smaller than nbytes it finishes here.
-            if(((char*)buf)[i] == '\n') {
-                bytes_read = i + 1;
-                break;
-            }
-            //Makes sure that the last character in buf is a newline
-            if((i == (nbytes - 1)) && (((char*)buf)[i] != '\n')){
-                ((char*) buf)[i] = '\n';
-                bytes_read = i + 1;
-                break;
-            }
-        }
-    } else {
-        for(i = 0; i < BUFFER_SIZE; ++i) {
-            //Fill in the user entered buffer
-            ((char*) buf)[i] = char_buffer[i];
-            char_buffer[i] = ' ';               //Clear char_buffer
-            if(((char*)buf)[i] == '\n') {
-                bytes_read = i + 1;
-                break;
-            }
+    //iterate through keyboard buffer
+    for (i = 0; i < nbytes || i < maxInputLength; i++)
+    {
+        // if not null
+        if (keyBuffer[i] != NULL && keyBuffer[i] != '\n')
+        {
+            // write to buffer and increment count
+            tempBuffer[i] = keyBuffer[i];
+            count++;
         }
     }
-    char_count = 0;  //Go back to the start of the char_buffer.
-    enter_flag = 0;
+
+    //(char*) buf = tempBuffer;
+    // iterate through keyboard buffer
+    for (i = 0; i < maxInputLength; i++)
+    {
+        // clear keyboard buffer
+        keyBuffer[i] = NULL;
+        keyBufferIndex = 0;
+    }
+
+    //enable interrupts again
     sti();
 
-    return bytes_read;
+    // return chars read
+    term_arr[curr_process].screen_x = get_screen_x();
+    term_arr[curr_process].screen_y = get_screen_y();
+    return count;
 }
 
-/* int32_t terminal_write(int32_t fd, const void* buf, int32_t nbytes);
- * Outputs the data from the user given buf to video memory.
- * Inputs: fd - The file descriptor value.
- *        buf - The array that terminal write will be getting the values
- *              to print to video memory.
- *     nbytes - The number of characters to print from buf.
- * Return Value: The number of bytes (characters) written to video memory.
- * Side effects: char_buffer, char_count, and enter_flag are changed */
-int32_t terminal_write(int32_t fd, const void* buf, int32_t nbytes){
+
+/* terminal_write
+ * 	Description: Writes to the terminal.
+ * 	Inputs: fd, buf, nbytes
+ * 	Outputs: Remeber of bytes outputted
+ * 	Side Effects: Writes the buffer to the terminal.
+ */
+int32_t terminal_write(int32_t fd, const void *buf, int32_t nbytes)
+{
+    cli();
+
+    set_screen_x(term_arr[curr_process].screen_x);
+    set_screen_y(term_arr[curr_process].screen_y);
+
+    // initialize variables
     int i;
-    char curr_char;
-    for(i = 0; i < nbytes; ++i) {
-        //Prints the given characters to the screen.
-        curr_char = ((char*) buf)[i];
-        if(curr_char != '\0')           //Skips printing out the null terminator
-            putc(curr_char);
-    }
-    return nbytes;
-}
+    int8_t count = 0;
+    term_arr[curr_process].newline_tracker = 0;
+    term_arr[curr_process].enterFlag = 0;
+    
 
-/* int32_t terminal_open(const uint8_t* filename);
- * Initializes things specific to the terminal, or return 0.
- *
- * Inputs: filename - The name of the file to initialize from.
- * Return Value: 0 for success in initialization. 1 for failure.
- * Side effects: none */
-int32_t terminal_open(const uint8_t* filename) {
-    return 0;
-}
+    // get buffer
+    char *tempBuffer = (char *)buf;
+    
+    // loop through buffer
+    for (i = 0; i < nbytes; i++)
+    {
+        // check for \0
+        if (tempBuffer[i] != '\0')
+        {
+            //check if new line
+            if (tempBuffer[i] == '\n' && term_arr[curr_process].visible == 1)
+            {
+                // if new line set tracker to 0
+                newline_check_user();
+                vert_scroll_user();
+                term_arr[curr_terminal].newline_tracker = 0;
+            }
+            else if(tempBuffer[i] == '\n')
+            {
+                // if new line set tracker to 0
+                newline_check();
+                vert_scroll();
+                term_arr[curr_process].newline_tracker = 0;
+            }
+            // print buffer at index i and iterate count and newline tracker
+            if(!term_arr[curr_process].visible)
+            {
+                putc(tempBuffer[i]);
+            }
+            else
+            {
+                putc_user(tempBuffer[i]);
+            }
+            update_cursor();
+            count++;
+            term_arr[curr_process].newline_tracker++;
 
-/* int32_t terminal_close(int32_t fd);
- * Clears things specific to the terminal, or return 0.
- *
- * Inputs: fd - The file descriptor value.
- * Return Value: 0 for success in initialization. 1 for failure.
- * Side effects: none */
-int32_t terminal_close(int32_t fd) {
-    return 0;
-}
-
-
-/* void get_char(char new_char);
- * Puts the most recently entered keyboard character into the char_buffer
- * for terminal_read and updates if enter has been pressed.
- *
- * Inputs: new_char - The character entered by the keyboard
- * Return Value: none
- * Side effects: char_buffer, char_count, and enter_flag are changed */
-void get_char(char new_char) {
-    //End the buffer with the newline and enable the enter_flag.
-    if(new_char == '\n') {
-        enter_flag = 1;
-        if(char_count >= BUFFER_SIZE)
-            char_buffer[BUFFER_SIZE - 1] = '\n';
-        else
-            char_buffer[char_count] = '\n';
-    //Clear one space of the buffer.
-    } else if(new_char == BCKSPACE) {
-        if(char_count > 0){
-            if(char_count <= BUFFER_SIZE)
-                char_buffer[char_count - 1] = ' ';
-            --char_count;
+            // check if newline tracker greater than num cols
+            if (term_arr[curr_process].newline_tracker >= NUM_COLS)
+            {
+                // call enter, check for vertical scrolling and set newline tracker to 0
+                if(!term_arr[curr_process].visible)
+                {
+                    enter();
+                    vert_scroll();
+                    term_arr[curr_process].newline_tracker = 0;
+                }
+                else
+                {
+                    enter_user();
+                    vert_scroll_user();
+                    term_arr[curr_terminal].newline_tracker = 0;
+                }
+            }
         }
-    //Add a new character to the buffer.
-    } else if(char_count < (BUFFER_SIZE - 1)){
-        char_buffer[char_count] = new_char;
-        ++char_count;
     }
-    //Keep track of the available number of backspaces that can be used.
-    else{
-        ++char_count;
-    }
+
+    term_arr[curr_process].screen_x = get_screen_x();
+    term_arr[curr_process].screen_y = get_screen_y();
+
+    sti();
+
+    // return chars written
+    return count;
+}
+
+/* terminal_open
+ * 	Description: Opens the file but since we have a read-only
+ *  system, it does nothing.
+ * 	Inputs: filename
+ * 	Outputs: Returns 0.
+ * 	Side Effects: None.
+ */
+int32_t terminal_open(const uint8_t *filename)
+{
+    return 0;
+}
+
+/* terminal_close
+ * 	Description: Closes the file but since we have a read-only
+ *  system, it does nothing.
+ * 	Inputs: fd
+ * 	Outputs: Returns 0.
+ * 	Side Effects: None.
+ */
+int32_t terminal_close(int32_t fd)
+{
+    return 0;
 }

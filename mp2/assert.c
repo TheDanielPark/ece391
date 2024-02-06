@@ -1,5 +1,4 @@
-/*
- * tab:4
+/*									tab:8
  *
  * assert.c - support for assertions and fatal exceptions
  *
@@ -23,16 +22,17 @@
  * THE UNIVERSITY OF ILLINOIS HAS ANY OBLIGATION TO PROVIDE MAINTENANCE, 
  * SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS."
  *
- * Author:        Steve Lumetta
- * Version:       2
- * Creation Date: Tue Feb  1 20:26:56 2005
- * Filename:      assert.c
+ * Author:	    Steve Lumetta
+ * Version:	    2
+ * Creation Date:   Tue Feb  1 20:26:56 2005
+ * Filename:	    assert.c
  * History:
- *    SL    1    Tue Feb  1 20:26:56 2005
- *        First written.
- *    SL    2    Sun Sep 13 12:30:05 2009
- *        Adapted from later MP2 versions for use with maze game.
+ *	SL	1	Tue Feb  1 20:26:56 2005
+ *		First written.
+ *	SL	2	Sun Sep 13 12:30:05 2009
+ *		Adapted from later MP2 versions for use with maze game.
  */
+
 
 #include <signal.h>
 #include <stdint.h>
@@ -41,26 +41,38 @@
 
 #include "assert.h"
 
+
 /*
  * The cleanup stack is implemented as a linked list of cleanup_t structures,
  * defined here.
  */
-typedef struct cleanup_t {
+typedef struct cleanup_t cleanup_t;
+struct cleanup_t {
     cleanup_fn_t fn;    /* the function to be called                  */
     void*        arg;   /* the argument to pass to the function       */
     cleanup_t*   next;  /* a pointer to the next cleanup on the stack */
-} cleanup_t;
+};
+
 
 /* Helper function prototypes; see function headers for further information. */
-static void catch_signal(int sig);
-static void set_signal_behavior(int32_t num);
+static void catch_signal (int sig);
+static void set_signal_behavior (int32_t num);
 
-/* MODULE VARIABLES */
+
+/*
+ * MODULE VARIABLES
+ */
 
 /* This variable points to the top of the cleanup stack. */
 static cleanup_t* cleanup_stack = NULL;
 
-/* INTERFACE FUNCTIONS -- these functions serve as entry points from other modules */
+
+
+/*
+ * INTERFACE FUNCTIONS -- these functions serve as entry points from other
+ * modules
+ */
+
 
 /* 
  * clean_on_signals
@@ -76,20 +88,23 @@ static cleanup_t* cleanup_stack = NULL;
  *   WARNING: not compatible with other redefinitions of behavior for the
  *            specified signals
  */
-void clean_on_signals() {
-    struct sigaction sa;     /* signal behavior definition structure  */
+void
+clean_on_signals ()
+{
+    struct sigaction sa;   /* signal behavior definition structure  */
 
     /* Use helper function to set up behavior for these four signals. */
-    set_signal_behavior(SIGINT);
-    set_signal_behavior(SIGSEGV);
-    set_signal_behavior(SIGBUS);
-    set_signal_behavior(SIGQUIT);
+    set_signal_behavior (SIGINT);
+    set_signal_behavior (SIGSEGV);
+    set_signal_behavior (SIGBUS);
+    set_signal_behavior (SIGQUIT);
 
     /* Ignore stop requests from the keyboard (tty). */
     sa.sa_handler = SIG_IGN;
     if (-1 == sigaction (SIGTSTP, &sa, NULL))
         PANIC ("writing signal action failed");
 }
+
 
 /* 
  * do_cleanups
@@ -100,11 +115,14 @@ void clean_on_signals() {
  *   SIDE EFFECTS: executes all cleanups and frees alls structure use to 
  *                 store cleanup function information
  */
-void do_cleanups() {
+void 
+do_cleanups ()
+{
     /* Pop until the stack is empty. */
     while (NULL != cleanup_stack)
-        pop_cleanup(1);
+        pop_cleanup (1);
 }
+
 
 /* 
  * pop_cleanup
@@ -116,18 +134,20 @@ void do_cleanups() {
  *   SIDE EFFECTS: frees the structure use to store cleanup function 
  *                 information
  */
-void pop_cleanup(int execute) {
+void 
+pop_cleanup (int execute)
+{
     cleanup_t* c;
 
     /* Module interface: check for stack underflow. */
-    ASSERT(NULL != cleanup_stack);
+    ASSERT (NULL != cleanup_stack);
 
     /* Check underflow again, in case it escaped our debugging runs. */
     if (NULL != (c = cleanup_stack)) {
-    cleanup_stack = c->next; /* Remove top element from stack. */
-    if (execute)             /* Execute it if requested.       */
-        (*(c->fn))(c->arg);
-        free(c);                /* And free the structure.        */
+	cleanup_stack = c->next; /* Remove top element from stack. */
+	if (execute)             /* Execute it if requested.       */
+	    (*(c->fn)) (c->arg);
+	free (c);                /* And free the structure.        */
     }
 }
 
@@ -143,13 +163,15 @@ void pop_cleanup(int execute) {
  *   SIDE EFFECTS: dynamically allocates a structure to store cleanup
  *                 function information
  */
-void push_cleanup(cleanup_fn_t fn, void* arg) {
+void 
+push_cleanup (cleanup_fn_t fn, void* arg)
+{
     cleanup_t* c;    /* new cleanup stack element */
 
     /* Module interface: check argument validity. */
-    ASSERT(NULL != fn);
+    ASSERT (NULL != fn);
 
-    if (NULL == (c = malloc(sizeof (*c)))) /* Create a new structure.     */
+    if (NULL == (c = malloc (sizeof (*c)))) /* Create a new structure.     */
         ABORT ("out of memory");
     c->fn         = fn;                     /* Fill in the new structure.  */
     c->arg        = arg;
@@ -157,10 +179,13 @@ void push_cleanup(cleanup_fn_t fn, void* arg) {
     cleanup_stack = c;
 }
 
+
+
 /*
  * HELPER FUNCTIONS -- these functions are only called from other functions
  * in this file
  */
+
 
 /* 
  * catch_signal
@@ -173,10 +198,13 @@ void push_cleanup(cleanup_fn_t fn, void* arg) {
  *   WARNING: will loop forever if signal's default behavior is not restored
  *            after handler execution!
  */
-static void catch_signal(int sig) {
-    do_cleanups();
-    kill(getpid(), sig);
+static void
+catch_signal (int sig)
+{
+    do_cleanups ();
+    kill (getpid (), sig);
 }
+
 
 /* 
  * set_signal_behavior
@@ -190,12 +218,14 @@ static void catch_signal(int sig) {
  *   WARNING: not compatible with other redefinitions of behavior for the
  *            specified signal
  */
-static void set_signal_behavior(int32_t num) {
+static void
+set_signal_behavior (int32_t num)
+{
     struct sigaction sa;   /* signal behavior definition structure  */
 
     /* Read current signal behavior. */
-    if (-1 == sigaction(num, NULL, &sa))
-        PANIC("reading signal action failed");
+    if (-1 == sigaction (num, NULL, &sa))
+        PANIC ("reading signal action failed");
 
     /*
      * Set signal handler and request restoration to default behavior of
@@ -205,6 +235,7 @@ static void set_signal_behavior(int32_t num) {
     sa.sa_flags |= SA_ONESHOT;
 
     /* Install new behavior for signal. */
-    if (-1 == sigaction(num, &sa, NULL))
-        PANIC("writing signal action failed");
+    if (-1 == sigaction (num, &sa, NULL))
+        PANIC ("writing signal action failed");
 }
+

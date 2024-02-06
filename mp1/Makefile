@@ -4,23 +4,20 @@ LDFLAGS=-lm
 .PHONY: all
 all: ktest utest
 
-ktest: mp1_testcases.o
+ktest: missile-command.o vga.o
 	$(CC) $(LDFLAGS) $^ -o $@
 
-utest: mp1_userspace.o mp1_testcases_u.o mp1_u.o
+utest: umissile-command.o mp1.o mp1_userspace.o mp1-given.o uvga.o
 	$(CC) $(LDFLAGS) $^ -o $@ 
 
-mp1_u.o: mp1.S mp1.h
-	as -g -L mp1.S -o mp1_u.o
+mp1.o: mp1.S
+	$(CC) $(CFLAGS) -D_USERSPACE -Wa,--gstabs $^ -c -o $@
 
-mp1_testcases.o: mp1_testcases.c mp1.h
-	$(CC) $(CFLAGS) -c -o $@ $<
+umissile-command.o: missile-command.c
+	$(CC) $(CFLAGS) -D_USERSPACE $^ -c -o $@
 
-mp1_testcases_u.o: mp1_testcases.c mp1.h
-	$(CC) $(CFLAGS) -D_USERSPACE -c -o $@ $<
-
-mp1_userspace.o: mp1_userspace.c mp1.h
-	$(CC) $(CFLAGS) -c -D_USERSPACE -o $@ $<
+uvga.o: vga.c
+	$(CC) $(CFLAGS) -D_USERSPACE $^ -c -o $@
 
 clean:
 	rm -f *.o ktest utest

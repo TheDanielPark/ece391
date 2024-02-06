@@ -16,6 +16,7 @@
  */
 extern int tuxctl_ldisc_get(struct tty_struct*, char *, int);
 
+
 /* tuxctl_ldisc_put()
  * Write bytes out to the device. Returns the number of bytes *not* written.
  * This means, 0 on success and >0 if the line discipline's internal buffer
@@ -24,7 +25,7 @@ extern int tuxctl_ldisc_get(struct tty_struct*, char *, int);
 extern int tuxctl_ldisc_put(struct tty_struct*, char const*, int);
 
 /* tuxctl_handle_packet
- * To be written by the student.  This function will handle a
+ * To be written by the student.  This function will handle a 
  * packet sent to the computer from the tux controller.  This is
  * called by tuxctl_ldisc_data_callback().
  */

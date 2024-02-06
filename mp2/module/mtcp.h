@@ -2,8 +2,8 @@
 ; mtcp.h - Mouse/TuxController Protocol
 ; Mark Murphy 2006
 ;
-; This header file defines the interface between the PC and the
-; Mouse/TuxController boards. The overall philosophy was to incorporate
+; This header file defines the interface between the PC and the 
+; Mouse/TuxController boards. The overall philosophy was to incorporate 
 ; both the functionality of the PS/2 Mouse (which is used by the 'layout'
 ; circuit simulator) as well as extend the functionality provided by the
 ; parallel-port based 2-button boards used previously for MP2's like the
@@ -18,7 +18,7 @@
 ; three byte packets have a structure which is meant to allow for as much
 ; compatibility as possible with the PS/2 Mouse motion packet (see below).
 ; A few restrictions and changes had to be made to ensure higher reliability
-; in the presence of untrustworthy operating systems ....
+; in the presence of untrustworthy operating systems .... 
 ;
 ; (Don't worry that there is a lot of words in these next few paragraphs,
 ;  pictures follow... )
@@ -28,12 +28,12 @@
 ; '1'. If the packet is a PS/2 Mouse emulation packet, then bit 6 will be '0'
 ; and bit 3 will be '1'; otherwise bit 6 will be '1' and bit 3 will be '0'.
 ; This leaves 5 bits in which to encode opcodes for non PS/2 responses, and
-; 2 7-bit fields for data.
+; 2 7-bit fields for data. 
 ;
 ; This limits the X,Y movement values for the PS/2 emulation to 8 bit 2's
 ; compliment integers (in the actual PS/2 spec, they are 9-bits). If you are
-; familiar with the PS/2 spec, notice that this also fixes the Y,X overflow
-; fields to 0.
+; familiar with the PS/2 spec, notice that this also fixes the Y,X overflow 
+; fields to 0. 
 ;
 ;
 ; In a more visual form:
@@ -65,7 +65,7 @@
 ;
 ; Where R[4:0] is the command response code, and the DATA fields are
 ; specific to each particular response.
-;
+; 
 ;*/
 
 ;/*
@@ -100,8 +100,8 @@
 
 
 
-;/*
-; MTC to PC first bytes. Limited to 32 opcodes, however the
+;/* 
+; MTC to PC first bytes. Limited to 32 opcodes, however the 
 ; MTCP_BUTTON_POLL takes up 4 opcodes
 ; */
 
@@ -130,7 +130,7 @@
 
 #define MTCP_ERROR 	MTCP_RESP(0x1F)
 
-;/*
+;/* 
 ; PC to MTC Command Opcodes - don't change these without changing the order
 ; of the jump table in mainloop.asm. The defines limit the number to 32.
 ; */
@@ -157,7 +157,7 @@
 #define MTCP_CLK_SET	MTCP_CMD(0xa)
 #define MTCP_CLK_POLL	MTCP_CMD(0xb)
 #define MTCP_CLK_RUN	MTCP_CMD(0xc)
-#define MTCP_CLK_STOP	MTCP_CMD(0xd)
+#define MTCP_CLK_STOP	MTCP_CMD(0xd)	
 #define MTCP_CLK_UP	MTCP_CMD(0xe)
 #define MTCP_CLK_DOWN	MTCP_CMD(0xf)
 #define MTCP_CLK_MAX	MTCP_CMD(0x10)
@@ -169,20 +169,20 @@
 
 
 ;/*
-; ************************** Commands ********************************
+; ************************** Commands ******************************** 
 ;
 ; Opcode: MTCP_RESET_DEV
 ;	Reset the device. The device doesn't immediately respond, but
 ;	generates an MTCP_RESET event when it is finished initializing
-;	itself.
+;	itself. 
 ;
 ; Opcode: MTCP_OFF
 ;	Turn the MTC off. The RESET button on the board will need to be
-;	pressed for it to resume operation. It will generate an
+;	pressed for it to resume operation. It will generate an 
 ;	MTCP_OFF_EVENT before going to sleep. This is only a valid command
 ;	when debug mode is off (i.e. the PC has sent an MTCP_DBG_OFF
 ;	command).
-;
+; 
 ; Opcode: MTCP_POLL
 ; 	Poll Buttons - get the current status of the 8 buttons.
 ;	The bitmask is active low - a bit is clear when the corresponding
@@ -215,7 +215,7 @@
 ;	which of the LED's to set, and also determines how many bytes will
 ;	follow - one byte for each led to set.
 ;
-;
+; 
 ; 	Mapping from 7-segment to bits
 ; 	The 7-segment display is:
 ;		  _A
@@ -225,20 +225,20 @@
 ;		  -D .dp
 ;
 ; 	The map from bits to segments is:
-;
+; 
 ; 	__7___6___5___4____3___2___1___0__
-; 	| A | E | F | dp | G | C | B | D |
+; 	| A | E | F | dp | G | C | B | D | 
 ; 	+---+---+---+----+---+---+---+---+
-;
+; 
 ; 	Arguments: >= 1 bytes
 ;		byte 0 - Bitmask of which LED's to set:
 
 ;		__7___6___5___4____3______2______1______0___
-; 		| X | X | X | X | LED3 | LED2 | LED1 | LED0 |
+; 		| X | X | X | X | LED3 | LED2 | LED1 | LED0 | 
 ; 		----+---+---+---+------+------+------+------+
 ;
 ;	The number of bytes which should follow should be equal to the
-;	number of bits set in byte 0. The bytes should be sent in order of
+;	number of bits set in byte 0. The bytes should be sent in order of 
 ;	increasing LED number. (e.g LED0, LED2, LED3 for a bitmask of 0x0D)
 ;
 ; 	Response: 1 byte
@@ -251,7 +251,7 @@
 ; Opcode MTCP_LED_USR
 ;	Put the LED display into user-mode. In this mode, the value specified
 ;	by the MTCP_LED_SET command is displayed.
-;
+; 	
 ; Opcode MTCP_CLK_RESET
 ;	Reset the clock. The clock value is set to zero, the direction is
 ;	set to down, and it is stopped.
@@ -272,11 +272,11 @@
 ;	an MTCP_CLK_EVENT event.
 ; 	Arguments: 2 bytes
 ;		byte 0 - Number of minutes to set (up to a maximum of 99).
-;
+;	
 ; Opcode MTCP_CLK_POLL
 ; Command:
 ;	Read the state of the clock. The result specifies whether the
-;	clock is running, its direction, and the current value in
+;	clock is running, its direction, and the current value in 
 ; 	minutes and seconds.
 ; 	Arguments: 0 bytes
 ; 	Response packet:
@@ -286,7 +286,7 @@
 ;			| 1 |    Minutes    |
 ;			+---+---------------+
 ;		byte 2 :
-;			+-7-+----6----+-5-4-3-2-1-0--+
+;			+-7-+----6----+-5-4-3-2-1-0--+		
 ;			| 1 | Running |    Seconds   |
 ;			+---+---------+--------------+
 ;
@@ -300,14 +300,14 @@
 ;
 ; Opcode MTCP_CLK_UP
 ;	Set the clock's direction to up. When running, It will count up
-;	until reaching the value set by MTCP_CLK_MAX, then generate a
+;	until reaching the value set by MTCP_CLK_MAX, then generate a 
 ;	CLK_EVENT
 ;
 ; Opcode MTCP_CLK_DOWN
 ;	Set the clock"s direction to Down. When running, it will count down
 ;	until reaching zero, then generate a CLK_EVENT.
 ;
-;*/
+;*/	
 
 ;/*
 ; ********************* Responses *************************
@@ -319,12 +319,12 @@
 ; MTCP_ACK
 ;	Response when the MTC successfully completes a command.
 ;
-; MTCP_POLL_OK
+; MTCP_POLL_OK	
 ;	First byte of a response to a poll of either the buttons or the
 ;	clock.
 ;
 ; MTCP_RESET
-; 	Generated when the devide re-initializes itself after a power-up,
+; 	Generated when the devide re-initializes itself after a power-up, 
 ;	a RESET button press, or an MTCP_RESET_DEV command.
 ;
 ;	Packet Format:
@@ -343,8 +343,8 @@
 ;		Byte 1 - reserved
 ;		Byte 2 - reserved
 ;
-; MTCP_BIOC_EVT
-;	Generated when the Button Interrupt-on-change mode is enabled and
+; MTCP_BIOC_EVT	
+;	Generated when the Button Interrupt-on-change mode is enabled and 
 ;	a button is either pressed or released.
 ;
 ; 	Packet format:
@@ -365,21 +365,21 @@
 ;		Byte 2 - reserved
 ;
 ; MTCP_LEDS_POLL
-;	Since there are 32 bits of data to return with this response, the
+;	Since there are 32 bits of data to return with this response, the 
 ;	data format is a bit screwy. It will be 2 3-byte packets of the
 ; 	form described above, with a slight modification: the opcode will
-;	be used to encode some of the data. There is a different opcode
+;	be used to encode some of the data. There is a different opcode 
 ;	for the first and second packets (1 bit of difference) to allow for
 ;	detection of a dropped packet.
-;	The data from LED's 0 and 1 will be in the first packet, and the
+;	The data from LED's 0 and 1 will be in the first packet, and the 
 ;	data from LED's 2 and 3 will be in the second packet. The data will
 ;	be of the same format as the LED_SET command, except that the segA
 ;	bits will be packed into the opcode, as shown in the diagram below
-;
+;	
 ;	In picto-gram form:
 ;	Packet 0 will be:
 ; 	  +-7-+-6-+-5-+--4-+-3-+-2-+-1--+-0--+
-; 	0 | 0 | 1 | 0 |  1 | 0 | 0 | A1 | A0 |
+; 	0 | 0 | 1 | 0 |  1 | 0 | 0 | A1 | A0 | 
 ; 	  +---+---+---+----+---+---+----+----+
 ; 	1 | 1 | E | F | dp | G | C | B  | D  | (data for LED0)
 ; 	  +---+---+---+----+---+---+----+----+
@@ -388,11 +388,11 @@
 ;
 ;	Packet 1 will be:
 ; 	  +-7-+-6-+-5-+--4-+-3-+-2-+-1--+-0--+
-; 	0 | 0 | 1 | 0 |  1 | 0 | 1 | A1 | A0 |
+; 	0 | 0 | 1 | 0 |  1 | 0 | 1 | A1 | A0 | 
 ; 	  +---+---+---+----+---+---+----+----+
 ; 	1 | 1 | E | F | dp | G | C | B  | D  | (data for LED2)
 ; 	  +---+---+---+----+---+---+----+----+
 ; 	2 | 1 | E | F | dp | G | C | B  | D  | (data for LED3)
 ; 	  +---+---+---+----+---+---+----+----+
-;
+;	
 ;*/

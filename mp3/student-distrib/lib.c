@@ -2,15 +2,14 @@
  * vim:ts=4 noexpandtab */
 
 #include "lib.h"
-
-#define VIDEO       0xB8000
-#define NUM_COLS    80
-#define NUM_ROWS    25
-#define ATTRIB      0x7
+#include "scheduler.h"
 
 static int screen_x;
 static int screen_y;
-static char* video_mem = (char *)VIDEO;
+char* video_mem = (char *)VIDEO;
+
+static int scrollFlag = 0;
+volatile int enterFlag = 0;
 
 /* void clear(void);
  * Inputs: void
@@ -22,25 +21,273 @@ void clear(void) {
         *(uint8_t *)(video_mem + (i << 1)) = ' ';
         *(uint8_t *)(video_mem + (i << 1) + 1) = ATTRIB;
     }
-    screen_x = 0;
-    screen_y = 0;
-    update_cursor();
 }
 
-/* void update_cursor(void);
+/* enable_cursor
+ * Inputs: cursor_start, cursor_end
+ * Return Value: none
+ * Function: Resets the cursor. */
+void enable_cursor(uint8_t cursor_start, uint8_t cursor_end)
+{
+    /* Taken from osdev */
+    // outb( 0x0A, 0x3D4);
+    // outb((inb(0x3D5) & 0xC0), 0x3D5  | cursor_start);
+ 
+    // outb(0x0B, 0x3D4);
+    // outb((inb(0x3D5) & 0xE0) ,0x3D5  | cursor_end);
+}
+
+/* update_cursor
+ * Inputs: none
+ * Return Value: none
+ * Function: Updates cursor. */
+void update_cursor(void)
+{
+    /* Taken from osdev */
+
+    int temp_x, temp_y;
+    temp_x = screen_x;
+    temp_y = screen_y;
+    screen_x = term_arr[curr_terminal].screen_x;
+    screen_y = term_arr[curr_terminal].screen_y;
+    
+    uint16_t pos = screen_y * NUM_COLS + screen_x;
+ 
+	outb(0x0F, 0x3D4);
+	outb((uint8_t) (pos & 0xFF), 0x3D5);
+	outb(0x0E, 0x3D4);
+	outb((uint8_t) ((pos >> 8) & 0xFF), 0x3D5);
+
+    screen_x = temp_x;
+    screen_y = temp_y;
+}
+
+/* void reset(void);
  * Inputs: void
  * Return Value: none
- * Function: Places the cursor image at the current print location
- * (As seen in wiki.osdev.org/Text_Mode_Cursor)
+ * Function: Clears video memory */
+void reset(void) {
+    screen_x = term_arr[curr_terminal].screen_x;
+    screen_y = term_arr[curr_terminal].screen_y;
+
+    int32_t i;
+    for (i = 0; i < NUM_ROWS * NUM_COLS; i++) {
+        *(uint8_t *)(video_mem + (i << 1)) = ' ';
+        *(uint8_t *)(video_mem + (i << 1) + 1) = ATTRIB;
+    }
+    screen_x = 0;
+    screen_y = 0;
+    enable_cursor(0, 0);
+
+    term_arr[curr_terminal].screen_x = screen_x;
+    term_arr[curr_terminal].screen_y = screen_y;
+}
+
+/* void backspace(void);
+ * Inputs: void
+ * Return Value: none
+ * Function: delete one character from terminal line */
+void backspace(void) {
+
+    screen_x = term_arr[curr_terminal].screen_x;
+    screen_y = term_arr[curr_terminal].screen_y;
+    video_mem = (char *) term_arr[curr_terminal].vid_mem_addr;
+    int32_t i;
+    i = NUM_COLS * screen_y + screen_x - 1;
+    *(uint8_t*)(video_mem + (i << 1)) = NULL;
+
+    // The left most position of the screen
+    if (screen_x == 0 && screen_y != 0) {
+        screen_x = NUM_COLS - 1;
+        screen_y--;
+    // Anywhere on the screen that is not beginning or left most position
+    } else if(screen_x != 0) {
+        screen_x--;
+    // Beginning of screen
+    } else {
+        screen_x = 0;
+        screen_y = 0;
+    }
+
+    term_arr[curr_terminal].screen_x = screen_x;
+    term_arr[curr_terminal].screen_y = screen_y;
+}
+
+/* void enter(void);
+ * Inputs: void
+ * Return Value: none
+ * Function: Increments terminal line and sets scrollFlag */
+void enter(void) {
+    // Keep the screen line at the bottom if at bottom and set scrollflag 
+    screen_x = term_arr[curr_process].screen_x;
+    screen_y = term_arr[curr_process].screen_y;
+
+    if (screen_y == NUM_ROWS - 1) {
+        screen_y = NUM_ROWS - 1;
+        scrollFlag = highSignal;
+    } else {
+        screen_y++;
+        scrollFlag = 0;
+    }
+    screen_x = 0;
+
+    term_arr[curr_process].screen_x = screen_x;
+    term_arr[curr_process].screen_y = screen_y;
+}
+
+/* void enter(void);
+ * Inputs: void
+ * Return Value: none
+ * Function: Increments terminal line and sets scrollFlag */
+void enter_user(void) {
+    // Keep the screen line at the bottom if at bottom and set scrollflag 
+    screen_x = term_arr[curr_terminal].screen_x;
+    screen_y = term_arr[curr_terminal].screen_y;
+
+    if (screen_y == NUM_ROWS - 1) {
+        screen_y = NUM_ROWS - 1;
+        scrollFlag = highSignal;
+    } else {
+        screen_y++;
+        scrollFlag = 0;
+    }
+    screen_x = 0;
+
+    term_arr[curr_terminal].enterFlag = 1;
+
+    term_arr[curr_terminal].screen_x = screen_x;
+    term_arr[curr_terminal].screen_y = screen_y;
+}
+
+/* void newline_check(void);
+ * Inputs: void
+ * Return Value: none
+ * Function: sets scrollFlag to high when screen_x at last row without
+ * changing screen_y
  */
-void update_cursor(void) {
-    uint16_t pos = screen_y * NUM_COLS + screen_x;
+void newline_check(void)
+{
+    screen_x = term_arr[curr_process].screen_x;
+    screen_y = term_arr[curr_process].screen_y;
 
-    outb(0x0E, 0x3D4);
-    outb((uint8_t) ((pos >> 8) & 0xFF), 0x3D5);
+    // Keep the screen line at the bottom if at bottom and set scrollflag 
+    if (screen_y == NUM_ROWS - 1) {
+        screen_y = NUM_ROWS - 1;
+        scrollFlag = highSignal;
+    }
 
-    outb(0x0F, 0x3D4);
-    outb((uint8_t) (pos & 0xFF), 0x3D5);
+    screen_x = 0;
+    
+    term_arr[curr_process].screen_x = screen_x;
+    term_arr[curr_process].screen_y = screen_y;
+}
+
+void newline_check_user(void)
+{
+    screen_x = term_arr[curr_terminal].screen_x;
+    screen_y = term_arr[curr_terminal].screen_y;
+    // Keep the screen line at the bottom if at bottom and set scrollflag 
+    if (screen_y == NUM_ROWS - 1) {
+        screen_y = NUM_ROWS - 1;
+        scrollFlag = highSignal;
+    }
+    screen_x = 0;
+    term_arr[curr_terminal].screen_x = screen_x;
+    term_arr[curr_terminal].screen_y = screen_y;
+}
+
+int get_screen_x()
+{
+    return screen_x;
+}
+
+int get_screen_y()
+{
+    return screen_y;
+}
+
+void set_screen_x(uint8_t x)
+{
+    screen_x = x;
+}
+
+void set_screen_y(uint8_t y)
+{
+    screen_y = y;
+}
+
+/* vert_scroll(void);
+ * Inputs: void
+ * Return Value: none
+ * Function: Shifts all the lines up by 1
+ * when the last line is reached. */
+void vert_scroll(void) {
+    int32_t k;
+    int32_t l;
+    screen_x = term_arr[curr_process].screen_x;
+    screen_y = term_arr[curr_process].screen_y;
+    // Check to see if at bottom and scroll flag is high
+    if (screen_y == NUM_ROWS - 1 && scrollFlag == 1) {
+        // Loop through each character in the screen and shift all up one
+        for (k = 1; k < NUM_ROWS; k++){ 
+            for(l = 0; l < NUM_COLS; l++) {
+                int32_t i;
+                int32_t j;
+                i = NUM_COLS * k + l;
+                j = (NUM_COLS * (k - 1)) + l;
+                video_mem = (char *) term_arr[curr_process].vid_mem_addr;
+                if(*(uint8_t*)(video_mem + (i << 1)) != nullValue) {
+                    *(uint8_t*)(video_mem + (j << 1)) = *(uint8_t*)(video_mem + (i << 1));
+                }
+                if (k == NUM_ROWS - 1) {
+                    *(uint8_t*)(video_mem + (i << 1)) = space;
+                }
+            }
+        }
+        scrollFlag = lowSignal;
+    }
+
+    update_cursor();
+
+    term_arr[curr_process].screen_x = screen_x;
+    term_arr[curr_process].screen_x = screen_x;
+}
+
+/* vert_scroll(void);
+ * Inputs: void
+ * Return Value: none
+ * Function: Shifts all the lines up by 1
+ * when the last line is reached. */
+void vert_scroll_user(void) {
+    int32_t k;
+    int32_t l;
+    screen_x = term_arr[curr_terminal].screen_x;
+    screen_y = term_arr[curr_terminal].screen_y;
+    // Check to see if at bottom and scroll flag is high
+    if (screen_y == NUM_ROWS - 1 && scrollFlag == 1) {
+        // Loop through each character in the screen and shift all up one
+        for (k = 1; k < NUM_ROWS; k++){ 
+            for(l = 0; l < NUM_COLS; l++) {
+                int32_t i;
+                int32_t j;
+                i = NUM_COLS * k + l;
+                j = (NUM_COLS * (k - 1)) + l;
+                video_mem = (char *) term_arr[curr_terminal].vid_mem_addr;
+                if(*(uint8_t*)(video_mem + (i << 1)) != nullValue) {
+                    *(uint8_t*)(video_mem + (j << 1)) = *(uint8_t*)(video_mem + (i << 1));
+                }
+                if (k == NUM_ROWS - 1) {
+                    *(uint8_t*)(video_mem + (i << 1)) = space;
+                }
+            }
+        }
+        scrollFlag = lowSignal;
+    }
+
+    update_cursor();
+    
+    term_arr[curr_terminal].screen_x = screen_x;
+    term_arr[curr_terminal].screen_x = screen_x;
 }
 
 /* Standard printf().
@@ -166,6 +413,7 @@ format_char_switch:
         }
         buf++;
     }
+    update_cursor();
     return (buf - format);
 }
 
@@ -185,69 +433,24 @@ int32_t puts(int8_t* s) {
 /* void putc(uint8_t c);
  * Inputs: uint_8* c = character to print
  * Return Value: void
- * Function: Output a character to the console */
+ *  Function: Output a character to the console */
 void putc(uint8_t c) {
-    if(c == '\n' || c == '\r') {    //Scrolling with newline
-        //For scrolling when at the bottom of the screen.
-        if(screen_y == (NUM_ROWS - 1)) {
-            int i;
-            int j;
-            for(j = 1; j < NUM_ROWS; j++) {
-                for(i = 0; i < NUM_COLS; i++) {
-                    //Replace the line above with the line below
-                    *(uint8_t *)(video_mem + ((NUM_COLS * (j - 1) + i) << 1)) =
-                    *(uint8_t *)(video_mem + ((NUM_COLS * j + i) << 1));
-                    *(uint8_t *)(video_mem + ((NUM_COLS * (j - 1) + i) << 1) + 1) = ATTRIB;
+    // If the screen is at the bottom keep it at the bottom.
+    video_mem = (char *) term_arr[curr_process].vid_mem_addr;
 
-                    //Clear the bottom row
-                    if(j == (NUM_ROWS - 1)) {
-                        *(uint8_t *)(video_mem + ((NUM_COLS * j + i) << 1)) = ' ';
-                        *(uint8_t *)(video_mem + ((NUM_COLS * j + i) << 1) + 1) = ATTRIB;
-                    }
-                }
-            }
-        } else {
+    screen_x = term_arr[curr_process].screen_x;
+    screen_y = term_arr[curr_process].screen_y;
+
+    if(c == '\n' || c == '\r') {
+        if(screen_y == NUM_ROWS - 1)
+        {
+            screen_y = NUM_ROWS - 1;
+        }
+        else
+        {
             screen_y++;
         }
         screen_x = 0;
-    } else if(c == 0x08) {  // 0x08 is a backspace character
-        if(!((screen_x == 0) && (screen_y == 0))){  //Don't print at start of video memory
-            screen_x--;
-            screen_x %= NUM_COLS;
-            screen_y = (screen_y + (screen_x / NUM_COLS)) % NUM_ROWS;
-            *(uint8_t *)(video_mem + ((NUM_COLS * screen_y + screen_x) << 1)) = ' ';
-            *(uint8_t *)(video_mem + ((NUM_COLS * screen_y + screen_x) << 1) + 1) = ATTRIB;
-        }
-    } else if(screen_x == (NUM_COLS - 1)) {     //Scrolling without newline
-        //For scrolling when at the bottom of the screen.
-        if(screen_y == (NUM_ROWS - 1)) {
-            int i;
-            int j;
-            for(j = 1; j < NUM_ROWS; j++) {
-                for(i = 0; i < NUM_COLS; i++) {
-                    //Write down the most recently entered character
-                    if((j == (NUM_ROWS - 1)) && (i == (NUM_COLS - 1))){
-                        *(uint8_t *)(video_mem + ((NUM_COLS * j + i) << 1)) = c;
-                        *(uint8_t *)(video_mem + ((NUM_COLS * j + i) << 1) + 1) = ATTRIB;
-                    }
-                    //Replace the line above with the line below
-                    *(uint8_t *)(video_mem + ((NUM_COLS * (j - 1) + i) << 1)) =
-                    *(uint8_t *)(video_mem + ((NUM_COLS * j + i) << 1));
-                    *(uint8_t *)(video_mem + ((NUM_COLS * (j - 1) + i) << 1) + 1) = ATTRIB;
-                    //Clear the bottom row
-                    if(j == (NUM_ROWS - 1)) {
-                        *(uint8_t *)(video_mem + ((NUM_COLS * j + i) << 1)) = ' ';
-                        *(uint8_t *)(video_mem + ((NUM_COLS * j + i) << 1) + 1) = ATTRIB;
-                    }
-                }
-            }
-            screen_x = 0;
-        } else {
-            *(uint8_t *)(video_mem + ((NUM_COLS * screen_y + screen_x) << 1)) = c;
-            *(uint8_t *)(video_mem + ((NUM_COLS * screen_y + screen_x) << 1) + 1) = ATTRIB;
-            screen_y++;
-            screen_x = 0;
-        }
     } else {
         *(uint8_t *)(video_mem + ((NUM_COLS * screen_y + screen_x) << 1)) = c;
         *(uint8_t *)(video_mem + ((NUM_COLS * screen_y + screen_x) << 1) + 1) = ATTRIB;
@@ -256,7 +459,41 @@ void putc(uint8_t c) {
         screen_y = (screen_y + (screen_x / NUM_COLS)) % NUM_ROWS;
     }
 
-    update_cursor();    //Put the cursor at the next print location.
+    term_arr[curr_process].screen_x = screen_x;
+    term_arr[curr_process].screen_y = screen_y;
+
+    update_cursor();
+}
+
+void putc_user(uint8_t c) {
+    // If the screen is at the bottom keep it at the bottom.
+    video_mem = (char *) term_arr[curr_terminal].vid_mem_addr;
+
+    screen_x = term_arr[curr_terminal].screen_x;
+    screen_y = term_arr[curr_terminal].screen_y;
+
+    if(c == '\n' || c == '\r') {
+        if(screen_y == NUM_ROWS - 1)
+        {
+            screen_y = NUM_ROWS - 1;
+        }
+        else
+        {
+            screen_y++;
+        }
+        screen_x = 0;
+    } else {
+        *(uint8_t *)(video_mem + ((NUM_COLS * screen_y + screen_x) << 1)) = c;
+        *(uint8_t *)(video_mem + ((NUM_COLS * screen_y + screen_x) << 1) + 1) = ATTRIB;
+        screen_x++;
+        screen_x %= NUM_COLS;
+        screen_y = (screen_y + (screen_x / NUM_COLS)) % NUM_ROWS;
+    }
+
+    term_arr[curr_terminal].screen_x = screen_x;
+    term_arr[curr_terminal].screen_y = screen_y;
+
+    update_cursor();
 }
 
 /* int8_t* itoa(uint32_t value, int8_t* buf, int32_t radix);

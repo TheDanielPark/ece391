@@ -26,6 +26,23 @@ char *vmem_base_addr;
 
 sigjmp_buf segv_jmp_buf;
 
+/* Imitates the cli instruction by blocking SIGIO
+ * Used to help avoid synchronization problems between the ioctls
+ * and the tasklet */
+void fake_cli(void) {
+	sigset_t old, new;
+	sigemptyset(&new);
+	sigaddset(&new, SIGIO);
+	sigprocmask(SIG_BLOCK, &new, &old);
+}
+
+/* Imitates the sti instruction by unblocking SIGIO */
+void fake_sti(void) {
+	sigset_t old, new;
+	sigemptyset(&new);
+	sigaddset(&new, SIGIO);
+	sigprocmask(SIG_UNBLOCK, &new, &old);
+}
 /* MP1 userspace signal handler */
 void
 __mp1_signal_handler(int garbage)
@@ -35,7 +52,6 @@ __mp1_signal_handler(int garbage)
 	 * as a tasklet */
 	mp1_rtc_tasklet((unsigned long)&vmem_base_addr);
 }
-
 void
 segv_handler(int garbage)
 {
@@ -91,21 +107,28 @@ int __mp1_open(char *file_path, int flags)
 /* MP1 userspace ioctl function */
 int __mp1_ioctl(int fd, unsigned long cmd, unsigned long arg)
 {
-
+	int ret;
+	fake_cli();
 	switch(cmd)
 	{
 		/* Pass the new ioctls to the student's MP1 ioctl function.
 		 * This is exactly the same as in the kernel. */
-		case RTC_ADD:
-			return mp1_ioctl(arg, 0);
-		case RTC_REMOVE:
-			return mp1_ioctl(arg, 1);
-		case RTC_FIND:
-			return mp1_ioctl(arg, 2);
-		case RTC_SYNC:
-			return mp1_ioctl(arg, 3);
-
-		/* Pass any other ioctls to the kernel via the actual system call */
+		case RTC_STARTGAME:
+			ret = mp1_ioctl(arg, 0);
+			break;
+		case RTC_ADDMISSILE:
+			ret = mp1_ioctl(arg, 1);
+			break;
+		case RTC_MOVEXHAIRS:
+			ret = mp1_ioctl(arg, 2);
+			break;
+		case RTC_GETSTATUS:
+			ret = mp1_ioctl(arg, 3);
+			break;
+		case RTC_ENDGAME:
+			ret = mp1_ioctl(arg, 4);
+			break;
+	/* Pass any other ioctls to the kernel via the actual system call */
 		default:
 			{
 #undef ioctl
@@ -114,6 +137,8 @@ int __mp1_ioctl(int fd, unsigned long cmd, unsigned long arg)
 			}
 
 	}
+	fake_sti();
+	return ret;
 }
 
 /* Userspace equivalents of copy_to_user and copy_from_user.
@@ -121,43 +146,63 @@ int __mp1_ioctl(int fd, unsigned long cmd, unsigned long arg)
  * necessary from kernel address space to user address space */
 unsigned long mp1_copy_to_user (void *to, const void *from, unsigned long n)
 {
+	fake_sti();
 	/* Turn on MP1 signal handling */
 	signal(SIGSEGV, segv_handler);
 	if(sigsetjmp(segv_jmp_buf,1) == 0) {
 		memcpy(to, from, n);
 		/* Turn off MP1 signal handling */
 		signal(SIGSEGV, SIG_DFL);
+		fake_cli();
 		return 0;
 	} else {
 		/* Turn off MP1 signal handling */
 		signal(SIGSEGV, SIG_DFL);
+		fake_cli();
 		return n;
 	}
 }
 unsigned long mp1_copy_from_user (void *to, const void *from, unsigned long n)
 {
 	/* Turn on MP1 signal handling */
+	fake_sti();
 	signal(SIGSEGV, segv_handler);
 	if(sigsetjmp(segv_jmp_buf,1) == 0) {
 		memcpy(to, from, n);
 		/* Turn off MP1 signal handling */
 		signal(SIGSEGV, SIG_DFL);
+		fake_cli();
 		return 0;
 	} else {
 		/* Turn off MP1 signal handling */
 		signal(SIGSEGV, SIG_DFL);
+		fake_cli();
 		return n;
 	}
 }
 
 /* Wrappers around memory allocation.  This allows us to run
  * the mp1.S code in either userspace or the kernel */
-void* mp1_malloc(unsigned long size)
+void* mp1_malloc(int size)
 {
-	return malloc(size);
+	void *ret;
+	fake_sti();
+	ret = malloc(size);
+	fake_cli();
+	return ret;
 }
 
 void mp1_free(void *ptr)
 {
+	fake_sti();
 	free(ptr);
+	fake_cli();
+}
+
+/* In userspace, we can use the raise() function to send a signal to ourselves
+ * Notice that this is an asynchronous notification, the handler is not called from this function */
+void mp1_notify_user(void)
+{
+	//We use SIGUSR1 (user defined signal 1) here
+	raise(SIGUSR1);
 }

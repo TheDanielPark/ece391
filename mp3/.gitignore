@@ -1,3 +1,3 @@
-bootimg
-mp3.img
-*.swp
+mp[0-9]_code_*/
+student_dist*/
+fred_*
